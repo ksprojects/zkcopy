@@ -20,7 +20,7 @@ import org.apache.zookeeper.data.Stat;
 public class ZkCopy implements Watcher
 {
     
-    private final int threadsNumber = 10;
+    private int threadsNumber = 1;
     
     private String znode;    
     private String source;
@@ -31,16 +31,20 @@ public class ZkCopy implements Watcher
      * @param args[0] - source ZooKeeper server
      * @param args[1] - destination ZooKeeper server
      * @param args[2] - path to copy
+     * @param args[3] - threads count
      */
     public static void main(String[] args)
     {
         // TODO Auto-generated method stub
         String source = args[0];
         String destination = args[1];
-        String znode = args[2];
-        
+        String znode = args[2];                
         try {
-            new ZkCopy(source, destination, znode).executeThreads();
+            ZkCopy proc = new ZkCopy(source, destination, znode);
+            if (args.length >= 4) {
+                proc.setThreadsNumber(args[3]);
+            }
+            proc.executeThreads();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -53,6 +57,13 @@ public class ZkCopy implements Watcher
         zkOut = new ZooKeeper(destination, 3000, this);
         checkCreatePath(zkOut, znode);
     }  
+    
+    private void setThreadsNumber(String s) {
+        Integer n = Integer.valueOf(s);
+        if (n > 0 && n <= 100) {
+            threadsNumber = n;
+        }
+    }
     
     public void checkCreatePath(ZooKeeper zk, String path) throws KeeperException, InterruptedException {
         String[] l = path.split("/");
@@ -126,9 +137,9 @@ class ZNodeWalker implements Runnable {
         try {
             ZkThread thread = (ZkThread)Thread.currentThread();
             ZooKeeper zk = thread.getZooKeeper();
-            Stat stat = null;            
-            stat = zk.exists(znode, false);   
-            if (stat != null) {
+//            Stat stat = null;            
+//            stat = zk.exists(znode, false);   
+//            if (stat != null) {
                 sync(zk, znode);
                 List<String> children = null;
                 children = zk.getChildren(znode, false);
@@ -143,9 +154,9 @@ class ZNodeWalker implements Runnable {
                         push(znode + "/" + child);
                     }
                 }
-            } else {
-                System.out.print("Node " + znode + " doesn't exist");
-            }        
+//            } else {
+//                System.out.print("Node " + znode + " doesn't exist");
+//            }        
         }
         catch (KeeperException e) {
             e.printStackTrace();
