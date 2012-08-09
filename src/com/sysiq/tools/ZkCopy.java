@@ -2,8 +2,6 @@ package com.sysiq.tools;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -18,19 +16,21 @@ import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.data.ACL;
 import org.apache.zookeeper.data.Stat;
 
-//import com.intershop.beehive.core.capi.log.Logger;
 
 public class ZkCopy implements Watcher
 {
-
-    String znode;    
-    String source;
-    String destination;
-    ZooKeeper zkOut;
     
-    BlockingQueue<String> queue = new ArrayBlockingQueue<String>(100000);
+    private final int threadsNumber = 10;
+    
+    private String znode;    
+    private String source;
+    private String destination;
+    private ZooKeeper zkOut;
+    
     /**
-     * @param args
+     * @param args[0] - source ZooKeeper server
+     * @param args[1] - destination ZooKeeper server
+     * @param args[2] - path to copy
      */
     public static void main(String[] args)
     {
@@ -55,7 +55,6 @@ public class ZkCopy implements Watcher
     }  
     
     public void checkCreatePath(ZooKeeper zk, String path) throws KeeperException, InterruptedException {
-//        System.out.println("CCP:"+path + " ");
         String[] l = path.split("/");
         StringBuffer b = new StringBuffer();
         for(int i=1; i<l.length; i++) {            
@@ -70,16 +69,11 @@ public class ZkCopy implements Watcher
     }
     
     public void executeThreads() throws KeeperException, InterruptedException {
-        checkCreatePath(zkOut, znode);
-        //*
-        final int threadsNumber = 10;
-        ExecutorService pool = Executors.newFixedThreadPool(threadsNumber, new ZkThreadFactory(source));
-        
+        checkCreatePath(zkOut, znode);        
+        ExecutorService pool = Executors.newFixedThreadPool(threadsNumber, new ZkThreadFactory(source));        
         AtomicInteger totalCounter = new AtomicInteger(0);
         AtomicInteger processedCounter = new AtomicInteger(0);
         pool.execute(new ZNodeWalker(zkOut, znode, pool, totalCounter, processedCounter));
-        
-//        pool.shutdown();
         try
         {
             while(true) {
@@ -98,7 +92,6 @@ public class ZkCopy implements Watcher
         {
             System.out.println("Await Termination of pool was unsuccessful: " + e.getMessage());
         }
-        //*/
     }
 
     @Override
@@ -133,26 +126,13 @@ class ZNodeWalker implements Runnable {
         try {
             ZkThread thread = (ZkThread)Thread.currentThread();
             ZooKeeper zk = thread.getZooKeeper();
-            Stat stat = null;
-            
-            stat = zk.exists(znode, false);
-            
-//            System.out.println("Synchronizing " + znode + " ...");
-            
+            Stat stat = null;            
+            stat = zk.exists(znode, false);   
             if (stat != null) {
-                
-                
-                  
                 sync(zk, znode);
-                
                 List<String> children = null;
-                
-                    children = zk.getChildren(znode, false);
-                
-                
-//                System.out.println("Children count of " + znode + " : " + children.size() + children.toString());
+                children = zk.getChildren(znode, false);
                 for(String child:children) {
-    //                System.out.println(child);
                     if ("zookeeper".equals(child)) {
                         // reserved
                         continue;
@@ -177,12 +157,10 @@ class ZNodeWalker implements Runnable {
         }
         finally {
             processedCounter.incrementAndGet();
-//            System.out.println("F " + znode + " " + totalCounter + " " + processedCounter);
         }
     }
     
-    private void push(String node) {
-//        System.out.println("Pushing " + node);
+    private void push(String node) {;
         pool.execute(new ZNodeWalker(zkOut, node, pool, totalCounter, processedCounter));
     }
     
@@ -208,6 +186,7 @@ class ZkThreadFactory implements ThreadFactory {
     public ZkThreadFactory(String hostPort) {
         this.hostPort = hostPort;
     }
+    
     public Thread newThread(Runnable r) {
       return new ZkThread(r, hostPort);
     }
@@ -228,7 +207,6 @@ class ZkThread extends Thread implements Watcher {
         {
             // TODO Auto-generated catch block
             e.printStackTrace();
-//            zk = null;
         }
     }
     
