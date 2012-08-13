@@ -1,10 +1,8 @@
 package com.sysiq.tools;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.zookeeper.CreateMode;
@@ -13,9 +11,9 @@ import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.ZooKeeper;
-import org.apache.zookeeper.data.ACL;
 import org.apache.zookeeper.data.Stat;
 
+import com.sysiq.tools.zkcopy.*;
 
 public class ZkCopy implements Watcher
 {
@@ -24,7 +22,6 @@ public class ZkCopy implements Watcher
     
     private String znode;    
     private String source;
-    private String destination;
     private ZooKeeper zkOut;
     
     /**
@@ -52,7 +49,6 @@ public class ZkCopy implements Watcher
     
     public ZkCopy(String source, String destination, String znode) throws IOException, KeeperException, InterruptedException {
         this.source = source;
-        this.destination = destination;
         this.znode = znode;
         zkOut = new ZooKeeper(destination, 3000, this);
         checkCreatePath(zkOut, znode);
@@ -114,121 +110,4 @@ public class ZkCopy implements Watcher
 
 }
 
-class ZNodeWalker implements Runnable {
-    
-    private final String znode;
-    private final ExecutorService pool;
-    private final AtomicInteger totalCounter;
-    private final AtomicInteger processedCounter;
-    private final ZooKeeper zkOut;
-    
-    ZNodeWalker(ZooKeeper zkOut, String znode, ExecutorService pool, AtomicInteger totalCounter, AtomicInteger processedCounter) {
-        this.znode = znode;
-        this.pool = pool;
-        this.totalCounter = totalCounter;
-        this.processedCounter = processedCounter;
-        this.zkOut = zkOut;
-        totalCounter.incrementAndGet();
-    }
 
-    @Override
-    public void run()
-    {
-        try {
-            ZkThread thread = (ZkThread)Thread.currentThread();
-            ZooKeeper zk = thread.getZooKeeper();
-//            Stat stat = null;            
-//            stat = zk.exists(znode, false);   
-//            if (stat != null) {
-                sync(zk, znode);
-                List<String> children = null;
-                children = zk.getChildren(znode, false);
-                for(String child:children) {
-                    if ("zookeeper".equals(child)) {
-                        // reserved
-                        continue;
-                    }
-                    if ("/".equals(znode)) {
-                        push(znode + child);
-                    } else {
-                        push(znode + "/" + child);
-                    }
-                }
-//            } else {
-//                System.out.print("Node " + znode + " doesn't exist");
-//            }        
-        }
-        catch (KeeperException e) {
-            e.printStackTrace();
-        }
-        catch(InterruptedException e)
-        {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
-        finally {
-            processedCounter.incrementAndGet();
-        }
-    }
-    
-    private void push(String node) {;
-        pool.execute(new ZNodeWalker(zkOut, node, pool, totalCounter, processedCounter));
-    }
-    
-    private void sync(ZooKeeper zk, String node) throws KeeperException, InterruptedException {
-        
-        Stat stat = zkOut.exists(node, false);
-//        List<ACL> acl = zk.getACL(node, stat);
-        List<ACL> acl = Ids.OPEN_ACL_UNSAFE;
-        byte[] data = zk.getData(node, false, stat);
-        if (stat == null) {
-            zkOut.create(node, data, acl, CreateMode.PERSISTENT);
-        } else {
-//            zkOut.setACL(node, acl, stat.getVersion());
-            zkOut.setData(node, data, -1);
-        }
-    }
-}
-
-class ZkThreadFactory implements ThreadFactory {
-    
-    private final String hostPort;
-    
-    public ZkThreadFactory(String hostPort) {
-        this.hostPort = hostPort;
-    }
-    
-    public Thread newThread(Runnable r) {
-      return new ZkThread(r, hostPort);
-    }
-    
-}
-
-class ZkThread extends Thread implements Watcher {
-    
-    private ZooKeeper zk = null;
-    
-    public ZkThread(Runnable r, String hostPort) {
-        super(r);
-        try
-        {
-            zk = new ZooKeeper(hostPort, 3000, this);
-        }
-        catch(IOException e)
-        {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
-    }
-    
-    @Override
-    public void process(WatchedEvent event)
-    {
-        // TODO Auto-generated method stub
-        
-    }
-    
-    public ZooKeeper getZooKeeper() {
-        return zk;
-    }
-}
