@@ -1,4 +1,4 @@
-package com.sysiq.tools.zkcopy;
+package com.sysiq.tools.zkcopy.reader;
 
 import java.io.IOException;
 
@@ -6,11 +6,11 @@ import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooKeeper;
 
-public class ZkThread extends Thread implements Watcher {
+public class ReaderThread extends Thread implements Watcher {
     
     private ZooKeeper zk = null;
     
-    public ZkThread(Runnable r, String hostPort) {
+    public ReaderThread(Runnable r, String hostPort) {
         super(r);
         try
         {
@@ -33,4 +33,5 @@ public class ZkThread extends Thread implements Watcher {
     public ZooKeeper getZooKeeper() {
         return zk;
     }
+
 }
