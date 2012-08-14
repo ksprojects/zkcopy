@@ -72,7 +72,6 @@ public class Writer implements Watcher
         for(int i=1; i<l.length; i++) {            
             b.append('/');
             b.append(l[i]);
-            System.out.println("CCP: " + b.toString());
             Stat stat = zk.exists(b.toString(), false);
             if (stat == null) {
                 zk.create(b.toString(), null, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
