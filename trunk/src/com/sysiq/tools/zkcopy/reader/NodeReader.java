@@ -35,7 +35,7 @@ public class NodeReader implements Runnable {
             ReaderThread thread = (ReaderThread)Thread.currentThread();
             ZooKeeper zk = thread.getZooKeeper();
             Stat stat = null;
-            String path = znode.getPath();
+            String path = znode.getAbsolutePath();
             logger.debug("Reading node " + path);
             byte[] data = zk.getData(path, false, stat);
             znode.setData(data);
