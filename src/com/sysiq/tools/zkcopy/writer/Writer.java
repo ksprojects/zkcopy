@@ -1,6 +1,7 @@
 package com.sysiq.tools.zkcopy.writer;
 
 import java.io.IOException;
+import java.util.List;
 
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.CreateMode;
@@ -21,10 +22,13 @@ public class Writer implements Watcher
     private String server;
     private String path;
     private ZooKeeper zk;
-    public Writer(String addr, Node znode) {
+    private boolean removeDeprecated;
+    
+    public Writer(String addr, Node znode, boolean removeDeprecatedNodes) {
         this.addr = addr;
         sourceRoot = znode;
-        parseAddr();
+        this.removeDeprecated = removeDeprecatedNodes;
+        parseAddr();        
     }
     
     private final void parseAddr() {
@@ -41,7 +45,7 @@ public class Writer implements Watcher
             Node dest = sourceRoot;
             dest.setPath(path);
             logger.info("Writing data...");
-            dfs(dest);
+            update(dest);
             logger.info("Writing data completed.");
         }
         catch(IOException e)
@@ -77,17 +81,40 @@ public class Writer implements Watcher
         }
     }
 
-    private void dfs(Node node) throws KeeperException, InterruptedException {
-        String path = node.getPath();
+    private void update(Node node) throws KeeperException, InterruptedException {
+        String path = node.getAbsolutePath();
+        
+        // 1. Update or create current node
         Stat stat = zk.exists(path, false);
         if (stat != null) {
             zk.setData(path, node.getData(), -1);
         } else {
             zk.create(path, node.getData(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
         }
+        
+        // 2. Recursively update or create children
         for(Node child:node.getChildren()) {
-            dfs(child);
+            update(child);
         }
+        
+        if (removeDeprecated) {
+            // 3. Remove deprecated children
+            List<String> destChildren = zk.getChildren(path, false);
+            for(String child: destChildren) {
+                if (!node.getChildrenNamed().contains(child)) {
+                    delete(node.getAbsolutePath() + "/" + child);
+                }
+            }
+        }
+    }
+    
+    private void delete(String path) throws KeeperException, InterruptedException {
+        List<String> children = zk.getChildren(path, false);
+        for(String child:children) {
+            delete(path + "/" + child);
+        }
+        zk.delete(path, -1);
+        logger.info("Deleted node " + path);
     }
     
     @Override
