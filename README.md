@@ -7,8 +7,7 @@ Tool will be useful in cases when there are big network latency and huge data se
 Usage:
 
 ```
-java 
-    -Dlogger.config="log4j.properties" 
+java
     -Dsource="server:port/path" 
     -Ddestination="server:port/path" 
     -Dthreads=10 

@@ -1,4 +1,4 @@
-package com.sysiq.tools.zkcopy;
+package com.github.ksprojects.zkcopy;
 
 import java.util.HashSet;
 import java.util.List;

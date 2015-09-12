@@ -1,4 +1,4 @@
-package com.sysiq.tools.zkcopy.reader;
+package com.github.ksprojects.zkcopy.reader;
 
 import java.io.IOException;
 

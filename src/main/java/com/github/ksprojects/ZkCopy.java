@@ -1,11 +1,11 @@
-package com.sysiq.tools;
+package com.github.ksprojects;
 
+import com.github.ksprojects.zkcopy.Node;
+import com.github.ksprojects.zkcopy.writer.Writer;
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
-import com.sysiq.tools.zkcopy.*;
-import com.sysiq.tools.zkcopy.reader.Reader;
-import com.sysiq.tools.zkcopy.writer.Writer;
+import com.github.ksprojects.zkcopy.reader.Reader;
 
 public class ZkCopy
 {
@@ -21,8 +21,8 @@ public class ZkCopy
     {
         String loggerConfig=System.getProperty("logger.config");
         
-        if (loggerConfig == null) {        
-            BasicConfigurator.configure();
+        if (loggerConfig == null) {
+            PropertyConfigurator.configure("classpath:log4j.properties");
         } else {
             PropertyConfigurator.configure(loggerConfig);
         }

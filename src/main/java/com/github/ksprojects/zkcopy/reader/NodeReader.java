@@ -1,4 +1,4 @@
-package com.sysiq.tools.zkcopy.reader;
+package com.github.ksprojects.zkcopy.reader;
 
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -9,7 +9,7 @@ import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.data.Stat;
 
-import com.sysiq.tools.zkcopy.Node;
+import com.github.ksprojects.zkcopy.Node;
 
 public class NodeReader implements Runnable {
     

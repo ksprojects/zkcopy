@@ -1,4 +1,4 @@
-package com.sysiq.tools.zkcopy.writer;
+package com.github.ksprojects.zkcopy.writer;
 
 import java.io.IOException;
 import java.util.List;
@@ -12,7 +12,7 @@ import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.data.Stat;
 
-import com.sysiq.tools.zkcopy.Node;
+import com.github.ksprojects.zkcopy.Node;
 
 public class Writer implements Watcher
 {

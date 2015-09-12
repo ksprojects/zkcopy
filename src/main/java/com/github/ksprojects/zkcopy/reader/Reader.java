@@ -1,4 +1,4 @@
-package com.sysiq.tools.zkcopy.reader;
+package com.github.ksprojects.zkcopy.reader;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.log4j.Logger;
 
-import com.sysiq.tools.zkcopy.Node;
+import com.github.ksprojects.zkcopy.Node;
 
 /**
  * ZooKeeper data reader
