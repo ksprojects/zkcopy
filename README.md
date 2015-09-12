@@ -24,7 +24,7 @@ java -jar target/zkcopy-*-jar-with-dependencies.jar
 * `source` - set source cluster address and root node to be copied
 * `destination` - set target cluster address and root node location where to
   copy data
-* `threads` - specify number of parallel workers to copy data. If latency if
-  high, then increasing this value might significantly improve copying speed
-* `DremoveDeprecatedNodes` - set it to `true` for removing nodes that are 
+* `threads` - specify number of parallel workers. If latency is
+  high, then increasing this number might significantly improve performance
+* `DremoveDeprecatedNodes` - set it to `true` to remove nodes that are 
   present on `target` but missing on `source`
