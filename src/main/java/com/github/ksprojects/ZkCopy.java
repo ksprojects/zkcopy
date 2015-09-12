@@ -13,20 +13,9 @@ public class ZkCopy
     private static Logger logger = Logger.getLogger(ZkCopy.class);
     private static final int DEFAULT_THREADS_NUMBER = 1;
     private static final boolean DEFAULT_REMOVE_DEPRECATED_NODES = false;
-    
-    /**
-     *
-     */
+
     public static void main(String[] args)
     {
-        String loggerConfig=System.getProperty("logger.config");
-        
-        if (loggerConfig == null) {
-            PropertyConfigurator.configure("classpath:log4j.properties");
-        } else {
-            PropertyConfigurator.configure(loggerConfig);
-        }
-        
         String source = System.getProperty("source");
         String destination = System.getProperty("destination");
         
@@ -76,16 +65,15 @@ public class ZkCopy
     }
     
     private static void help() {
-        System.out.print(
+        System.out.println(
                         "ZkCopy version 0.1\n" +
                         "Usage:\n" +
                         "\tjava " +
-                        "-Dlogger.config=\"log4j.properties\" " +
+                        "-jar target/zkcopy-*-jar-with-dependencies.jar " +
                         "-Dsource=\"server:port/path\" " +
                         "-Ddestination=\"server:port/path\" " +
                         "-Dthreads=10 " +
-                        "-DremoveDeprecatedNodes=true " +
-                        "-jar zkcopy.jar\n"
+                        "-DremoveDeprecatedNodes=true"
                         );
     }
  
