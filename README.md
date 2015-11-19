@@ -36,5 +36,5 @@ docker run --rm -it kshchepanovskyi/zkcopy \
   copy data
 * `threads` - specify number of parallel workers. If latency is
   high, then increasing this number might significantly improve performance
-* `DremoveDeprecatedNodes` - set it to `true` to remove nodes that are
+* `removeDeprecatedNodes` - set it to `true` to remove nodes that are
   present on `destination` but missing on `source`
