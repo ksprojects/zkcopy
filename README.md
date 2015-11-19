@@ -1,23 +1,33 @@
 # zkcopy
 
-Tool for fast copying ZooKeeper data between different clusters. 
+Tool for fast copying ZooKeeper data between different clusters.
 Optimized for copying big volumes of data over WAN.
 
 ## Build
 
 Requires [apache maven 3](https://maven.apache.org/).
 
-```
-$ mvn clean install
+```bash
+mvn clean install
 ```
 
 ## Usage
 
+```bash
+java -Dsource="server:port/path" \
+     -Ddestination="server:port/path" \
+     -Dthreads=10 \
+     -DremoveDeprecatedNodes=true \
+     -jar target/zkcopy-*-jar-with-dependencies.jar
 ```
-java -jar target/zkcopy-*-jar-with-dependencies.jar
-    -Dsource="server:port/path" 
-    -Ddestination="server:port/path" 
-    -Dthreads=10
+
+If using docker then:
+
+```bash
+docker run --rm -it kshchepanovskyi/zkcopy \
+    -Dsource="server:port/path" \
+    -Ddestination="server:port/path" \
+    -Dthreads=10 \
     -DremoveDeprecatedNodes=true
 ```
 
@@ -26,5 +36,5 @@ java -jar target/zkcopy-*-jar-with-dependencies.jar
   copy data
 * `threads` - specify number of parallel workers. If latency is
   high, then increasing this number might significantly improve performance
-* `DremoveDeprecatedNodes` - set it to `true` to remove nodes that are 
-  present on `target` but missing on `source`
+* `DremoveDeprecatedNodes` - set it to `true` to remove nodes that are
+  present on `destination` but missing on `source`
