@@ -21,7 +21,7 @@ java -Dsource="server:port/path" \
      -jar target/zkcopy-*-jar-with-dependencies.jar
 ```
 
-If using docker then:
+If using [docker](https://hub.docker.com/r/kshchepanovskyi/zkcopy/) then:
 
 ```bash
 docker pull kshchepanovskyi/zkcopy
