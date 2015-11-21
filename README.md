@@ -24,6 +24,7 @@ java -Dsource="server:port/path" \
 If using docker then:
 
 ```bash
+docker pull kshchepanovskyi/zkcopy
 docker run --rm -it kshchepanovskyi/zkcopy \
     -Dsource="server:port/path" \
     -Ddestination="server:port/path" \
