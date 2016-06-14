@@ -1,13 +1,13 @@
 package com.github.ksprojects.zkcopy.reader;
 
+import com.github.ksprojects.zkcopy.Node;
+import org.apache.log4j.Logger;
+
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import org.apache.log4j.Logger;
-
-import com.github.ksprojects.zkcopy.Node;
 
 /**
  * ZooKeeper data reader
@@ -22,12 +22,6 @@ public class Reader
     private String path;
     
     private static Logger logger = Logger.getLogger(Reader.class);
-    
-    public Reader(String source) {
-        threadsNumber = 1;
-        this.source = source;
-        parseSource();        
-    }
     
     public Reader(String source, int nThreads) {
         threadsNumber = nThreads;
@@ -53,7 +47,8 @@ public class Reader
         ExecutorService pool = Executors.newFixedThreadPool(threadsNumber, new ReaderThreadFactory(server));        
         AtomicInteger totalCounter = new AtomicInteger(0);
         AtomicInteger processedCounter = new AtomicInteger(0);
-        pool.execute(new NodeReader(pool, znode, totalCounter, processedCounter));
+        AtomicBoolean failed = new AtomicBoolean(false);
+        pool.execute(new NodeReader(pool, znode, totalCounter, processedCounter, failed));
         try
         {
             while(true) {
@@ -71,6 +66,9 @@ public class Reader
         catch(InterruptedException e)
         {
             logger.error("Await Termination of pool was unsuccessful", e);
+            return null;
+        }
+        if (failed.get()) {
             return null;
         }
         return znode;
