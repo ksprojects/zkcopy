@@ -1,7 +1,7 @@
 # zkcopy
 
 Tool for fast copying ZooKeeper data between different clusters.
-Optimized for copying big volumes of data over WAN.
+Originally it was developed for copying big volumes of configuration over WAN.
 
 ## Build
 
@@ -14,28 +14,26 @@ mvn clean install
 ## Usage
 
 ```bash
-java -Dsource="server:port/path" \
-     -Ddestination="server:port/path" \
-     -Dthreads=10 \
-     -DremoveDeprecatedNodes=true \
-     -jar target/zkcopy-*-jar-with-dependencies.jar
+java -jar target/zkcopy.jar --source server:port/path --target server:port/path
 ```
 
-If using [docker](https://hub.docker.com/r/kshchepanovskyi/zkcopy/) then:
+For [docker](https://hub.docker.com/r/kshchepanovskyi/zkcopy/), use following commands:
 
 ```bash
 docker pull kshchepanovskyi/zkcopy
-docker run --rm -it kshchepanovskyi/zkcopy \
-    -Dsource="server:port/path" \
-    -Ddestination="server:port/path" \
-    -Dthreads=10 \
-    -DremoveDeprecatedNodes=true
+docker run --rm -it kshchepanovskyi/zkcopy --source server:port/path --target server:port/path
 ```
 
-* `source` - set source cluster address and root node to be copied
-* `destination` - set target cluster address and root node location where to
-  copy data
-* `threads` - specify number of parallel workers. If latency is
-  high, then increasing this number might significantly improve performance
-* `removeDeprecatedNodes` - set it to `true` to remove nodes that are
-  present on `destination` but missing on `source`
+## Options
+
+```
+usage: zkcopy
+ -c,--copyOnly <true|false>       (optional) set this flag if you do not
+                                  want to remove nodes that are removed on
+                                  source
+ -h,--help                        print this message
+ -s,--source <server:port/path>   location of a source tree to copy
+ -t,--target <server:port/path>   target location
+ -w,--workers <N>                 (optional) number of concurrent workers
+                                  to copy data
+```
