@@ -32,6 +32,7 @@ public class ZkCopy {
         int threads = cfg.workers();
         boolean removeDeprecatedNodes = !cfg.copyOnly();
         LOGGER.info("using " + threads + " concurrent workers to copy data");
+        LOGGER.info("delete nodes = " + String.valueOf(removeDeprecatedNodes));
         Reader reader = new Reader(sourceAddress, threads);
         Node root = reader.read();
         if (root != null) {
@@ -62,7 +63,7 @@ public class ZkCopy {
             String sourceValue = getString(line, SOURCE);
             String targetValue = getString(line, TARGET);
             int workersValue = getInteger(line, WORKERS, DEFAULT_THREADS_NUMBER);
-            boolean copyOnlyValue = getBoolean(line, TARGET, !DEFAULT_REMOVE_DEPRECATED_NODES);
+            boolean copyOnlyValue = getBoolean(line, COPY_ONLY, !DEFAULT_REMOVE_DEPRECATED_NODES);
             return ImmutableConfiguration.builder()
                     .source(sourceValue)
                     .target(targetValue)
