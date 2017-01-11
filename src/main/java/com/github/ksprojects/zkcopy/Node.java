@@ -12,6 +12,7 @@ public class Node
     private final Set<String> childrenNames;
     private String path;
     private byte[] data;
+    private boolean isEphemeral;
     
     public Node(String path) {
         children = new LinkedList<Node>();
@@ -19,6 +20,7 @@ public class Node
         parent = null;
         this.path = path;
         data = null;
+        isEphemeral = false;
     }
     
     public Node(Node parent, String path) {
@@ -79,5 +81,13 @@ public class Node
     
     public byte[] getData() {
         return data;
+    }
+
+    public boolean isEphemeral() {
+        return isEphemeral;
+    }
+
+    public void setEphemeral(boolean ephemeral) {
+        isEphemeral = ephemeral;
     }
 }
