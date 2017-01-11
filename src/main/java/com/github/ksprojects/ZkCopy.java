@@ -11,7 +11,7 @@ public class ZkCopy {
     private static final Logger LOGGER = Logger.getLogger(ZkCopy.class);
     private static final int DEFAULT_THREADS_NUMBER = 10;
     private static final boolean DEFAULT_REMOVE_DEPRECATED_NODES = true;
-    private static final boolean DEFAULT_IGNORE_EPHEMERAL_NODES = false;
+    private static final boolean DEFAULT_IGNORE_EPHEMERAL_NODES = true;
     private static final String HELP = "help";
     private static final String SOURCE = "source";
     private static final String TARGET = "target";
