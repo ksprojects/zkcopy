@@ -15,4 +15,6 @@ public interface Configuration {
     int workers();
 
     boolean copyOnly();
+
+    boolean ignoreEphemeralNodes();
 }

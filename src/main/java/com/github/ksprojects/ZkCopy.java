@@ -11,11 +11,13 @@ public class ZkCopy {
     private static final Logger LOGGER = Logger.getLogger(ZkCopy.class);
     private static final int DEFAULT_THREADS_NUMBER = 10;
     private static final boolean DEFAULT_REMOVE_DEPRECATED_NODES = true;
+    private static final boolean DEFAULT_IGNORE_EPHEMERAL_NODES = true;
     private static final String HELP = "help";
     private static final String SOURCE = "source";
     private static final String TARGET = "target";
     private static final String WORKERS = "workers";
     private static final String COPY_ONLY = "copyOnly";
+    private static final String IGNORE_EPHEMERAL_NODES = "ignoreEphemeralNodes";
 
     public static void main(String[] args) {
         Configuration cfg = parseLegacyConfiguration();
@@ -33,10 +35,11 @@ public class ZkCopy {
         boolean removeDeprecatedNodes = !cfg.copyOnly();
         LOGGER.info("using " + threads + " concurrent workers to copy data");
         LOGGER.info("delete nodes = " + String.valueOf(removeDeprecatedNodes));
+        LOGGER.info("ignore ephemeral nodes = " + String.valueOf(cfg.ignoreEphemeralNodes()));
         Reader reader = new Reader(sourceAddress, threads);
         Node root = reader.read();
         if (root != null) {
-            Writer writer = new Writer(destinationAddress, root, removeDeprecatedNodes);
+            Writer writer = new Writer(destinationAddress, root, removeDeprecatedNodes, cfg.ignoreEphemeralNodes());
             writer.write();
         } else {
             LOGGER.error("FAILED");
@@ -64,11 +67,13 @@ public class ZkCopy {
             String targetValue = getString(line, TARGET);
             int workersValue = getInteger(line, WORKERS, DEFAULT_THREADS_NUMBER);
             boolean copyOnlyValue = getBoolean(line, COPY_ONLY, !DEFAULT_REMOVE_DEPRECATED_NODES);
+            boolean ignoreEphemeralNodes = getBoolean(line, IGNORE_EPHEMERAL_NODES, DEFAULT_IGNORE_EPHEMERAL_NODES);
             return ImmutableConfiguration.builder()
                     .source(sourceValue)
                     .target(targetValue)
                     .workers(workersValue)
                     .copyOnly(copyOnlyValue)
+                    .ignoreEphemeralNodes(ignoreEphemeralNodes)
                     .build();
         } catch (ParseException exp) {
             LOGGER.error("Could not parse options.  Reason: " + exp.getMessage());
@@ -107,12 +112,19 @@ public class ZkCopy {
                 .argName("true|false")
                 .desc("(optional) set this flag if you do not want to remove nodes that are removed on source")
                 .build();
+        Option ignoreEphemeralNodes = Option.builder("i")
+                .longOpt(IGNORE_EPHEMERAL_NODES)
+                .hasArg()
+                .argName("true|false")
+                .desc("(optional) set this flag if you do not want to copy ephemeral ZNodes")
+                .build();
 
         options.addOption(help);
         options.addOption(source);
         options.addOption(target);
         options.addOption(workers);
         options.addOption(copyOnly);
+        options.addOption(ignoreEphemeralNodes);
         return options;
     }
 

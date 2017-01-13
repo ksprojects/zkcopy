@@ -39,10 +39,13 @@ public class NodeReader implements Runnable {
             }
             ReaderThread thread = (ReaderThread) Thread.currentThread();
             ZooKeeper zk = thread.getZooKeeper();
-            Stat stat = null;
+            Stat stat = new Stat();
             String path = znode.getAbsolutePath();
             LOGGER.debug("Reading node " + path);
             byte[] data = zk.getData(path, false, stat);
+            if (stat.getEphemeralOwner() != 0) {
+                znode.setEphemeral(true);
+            }
             znode.setData(data);
             List<String> children = zk.getChildren(path, false);
             for (String child : children) {
