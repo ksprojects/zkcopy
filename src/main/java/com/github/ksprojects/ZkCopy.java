@@ -3,7 +3,13 @@ package com.github.ksprojects;
 import com.github.ksprojects.zkcopy.Node;
 import com.github.ksprojects.zkcopy.reader.Reader;
 import com.github.ksprojects.zkcopy.writer.Writer;
-import org.apache.commons.cli.*;
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.DefaultParser;
+import org.apache.commons.cli.HelpFormatter;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
 import org.apache.log4j.Logger;
 
 public class ZkCopy {
@@ -19,6 +25,9 @@ public class ZkCopy {
     private static final String COPY_ONLY = "copyOnly";
     private static final String IGNORE_EPHEMERAL_NODES = "ignoreEphemeralNodes";
 
+    /**
+     * Main entry point - start ZkCopy.
+     */
     public static void main(String[] args) {
         Configuration cfg = parseLegacyConfiguration();
         if (cfg == null) {

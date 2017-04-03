@@ -1,6 +1,8 @@
 package com.github.ksprojects.zkcopy.writer;
 
 import com.github.ksprojects.zkcopy.Node;
+import java.io.IOException;
+import java.util.List;
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
@@ -10,11 +12,7 @@ import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.data.Stat;
 
-import java.io.IOException;
-import java.util.List;
-
-public class Writer implements Watcher
-{
+public class Writer implements Watcher {
     private static Logger logger = Logger.getLogger(Writer.class);
     private Node sourceRoot;
     private String addr;
@@ -27,24 +25,36 @@ public class Writer implements Watcher
     private long deletedEphemeral = 0;
     private long nodesUpdated = 0;
     private long nodesCreated = 0;
-    
+
+    /**
+     * Create new {@link Writer} instance.
+     *
+     * @param addr address of a server to write data
+     * @param znode root node to copy data from
+     * @param removeDeprecatedNodes {@code true} if nodes that does
+     * not exist in source should be removed
+     * @param ignoreEphemeralNodes {@code true} if ephemeral nodes
+     * should not be copied
+     */
     public Writer(String addr, Node znode, boolean removeDeprecatedNodes, boolean ignoreEphemeralNodes) {
         this.addr = addr;
         sourceRoot = znode;
         this.removeDeprecated = removeDeprecatedNodes;
         this.ignoreEphemeralNodes = ignoreEphemeralNodes;
-        parseAddr();        
+        parseAddr();
     }
-    
-    private final void parseAddr() {
+
+    private void parseAddr() {
         int p = addr.indexOf('/');
         server = addr.substring(0, p);
         path = addr.substring(p);
     }
-    
+
+    /**
+     * Start process of writing data to the target.
+     */
     public void write() {
-        try
-        {
+        try {
             zk = new ZooKeeper(server, 3000, this);
             checkCreatePath(path);
             Node dest = sourceRoot;
@@ -59,18 +69,16 @@ public class Writer implements Watcher
                 logger.info("Deleted " + deletedEphemeral + " ephemeral nodes");
             }
 
-        }
-        catch(IOException|KeeperException|InterruptedException e)
-        {
+        } catch (IOException | KeeperException | InterruptedException e) {
             logger.error("Exception caught while writing nodes", e);
         }
     }
-    
-    public void checkCreatePath(String path) throws KeeperException, InterruptedException {
+
+    private void checkCreatePath(String path) throws KeeperException, InterruptedException {
         logger.info("Checking path " + path);
         String[] l = path.split("/");
         StringBuffer b = new StringBuffer();
-        for(int i=1; i<l.length; i++) {            
+        for (int i = 1; i < l.length; i++) {
             b.append('/');
             b.append(l[i]);
             Stat stat = zk.exists(b.toString(), false);
@@ -105,35 +113,34 @@ public class Writer implements Watcher
         }
 
         // 2. Recursively update or create children
-        for(Node child:node.getChildren()) {
+        for (Node child : node.getChildren()) {
             update(child);
         }
-        
+
         if (removeDeprecated) {
             // 3. Remove deprecated children
             List<String> destChildren = zk.getChildren(path, false);
-            for(String child: destChildren) {
+            for (String child : destChildren) {
                 if (!node.getChildrenNamed().contains(child)) {
                     delete(node.getAbsolutePath() + "/" + child);
                 }
             }
         }
     }
-    
+
     private void delete(String path) throws KeeperException, InterruptedException {
         List<String> children = zk.getChildren(path, false);
-        for(String child:children) {
+        for (String child : children) {
             delete(path + "/" + child);
         }
         zk.delete(path, -1);
         logger.info("Deleted node " + path);
     }
-    
+
     @Override
-    public void process(WatchedEvent event)
-    {
+    public void process(WatchedEvent event) {
         // TODO Auto-generated method stub
-        
+
     }
-    
+
 }

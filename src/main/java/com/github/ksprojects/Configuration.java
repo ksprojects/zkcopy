@@ -2,9 +2,6 @@ package com.github.ksprojects;
 
 import org.immutables.value.Value;
 
-/**
- * @author Kostiantyn Shchepanovskyi
- */
 @Value.Immutable
 public interface Configuration {
 

@@ -1,17 +1,16 @@
 package com.github.ksprojects.zkcopy.reader;
 
 import com.github.ksprojects.zkcopy.Node;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.data.Stat;
 
-import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-
-public class NodeReader implements Runnable {
+final class NodeReader implements Runnable {
 
     private static final Logger LOGGER = Logger.getLogger(NodeReader.class);
 
@@ -22,7 +21,7 @@ public class NodeReader implements Runnable {
 
     private final AtomicBoolean failed;
 
-    public NodeReader(ExecutorService pool, Node znode, AtomicInteger totalCounter, AtomicInteger processedCounter, AtomicBoolean failed) {
+    NodeReader(ExecutorService pool, Node znode, AtomicInteger totalCounter, AtomicInteger processedCounter, AtomicBoolean failed) {
         this.znode = znode;
         this.pool = pool;
         this.totalCounter = totalCounter;

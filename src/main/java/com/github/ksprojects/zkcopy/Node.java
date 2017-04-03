@@ -1,19 +1,21 @@
 package com.github.ksprojects.zkcopy;
 
 import java.util.HashSet;
-import java.util.List;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Set;
 
-public class Node
-{
-    private Node parent;
+public class Node {
     private final List<Node> children;
     private final Set<String> childrenNames;
+    private Node parent;
     private String path;
     private byte[] data;
     private boolean isEphemeral;
-    
+
+    /**
+     * Create new root node instance for a given path.
+     */
     public Node(String path) {
         children = new LinkedList<Node>();
         childrenNames = new HashSet<String>();
@@ -22,7 +24,10 @@ public class Node
         data = null;
         isEphemeral = false;
     }
-    
+
+    /**
+     * Create new child node.
+     */
     public Node(Node parent, String path) {
         children = new LinkedList<Node>();
         childrenNames = new HashSet<String>();
@@ -30,31 +35,27 @@ public class Node
         this.path = path;
         data = null;
     }
-    
+
     public Node getParent() {
         return parent;
     }
-    
-    public void appendChild(Node child) { 
+
+    public void appendChild(Node child) {
         children.add(child);
         childrenNames.add(child.getPath());
     }
-    
+
     public List<Node> getChildren() {
         return children;
     }
-    
+
     public Set<String> getChildrenNamed() {
         return childrenNames;
     }
-    
-    public void setChildren(List<Node> newChildren) {
-        children.clear();
-        for(Node child:newChildren) {
-            appendChild(child);
-        }
-    }
-    
+
+    /**
+     * Get an absolute path of this node.
+     */
     public String getAbsolutePath() {
         if (parent == null) { // root
             return path;
@@ -66,21 +67,21 @@ public class Node
             }
         }
     }
-    
+
     public String getPath() {
         return path;
     }
-    
+
     public void setPath(String path) {
         this.path = path;
     }
-    
-    public void setData(byte[] data) {
-        this.data = data;
-    }
-    
+
     public byte[] getData() {
         return data;
+    }
+
+    public void setData(byte[] data) {
+        this.data = data;
     }
 
     public boolean isEphemeral() {
