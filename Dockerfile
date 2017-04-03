@@ -1,5 +1,5 @@
-FROM maven:3.2-jdk-7-onbuild
+FROM 3.3.9-jdk-8-onbuild
 
-MAINTAINER Adam Avilla <aavilla@yp.com>
+MAINTAINER Kostiantyn Shchepanovskyi <schepanovsky@gmail.com>
 
 ENTRYPOINT ["./wrapper"]

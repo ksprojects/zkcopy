@@ -17,23 +17,26 @@ mvn clean install
 java -jar target/zkcopy.jar --source server:port/path --target server:port/path
 ```
 
-For [docker](https://hub.docker.com/r/kshchepanovskyi/zkcopy/), use following commands:
+With [docker](https://hub.docker.com/r/kshchepanovskyi/zkcopy/), use following commands:
 
 ```bash
-docker pull kshchepanovskyi/zkcopy
-docker run --rm -it kshchepanovskyi/zkcopy --source server:port/path --target server:port/path
+docker pull ksprojects/zkcopy
+docker run --rm -it ksprojects/zkcopy --source server:port/path --target server:port/path
 ```
 
 ## Options
 
 ```
-usage: zkcopy
- -c,--copyOnly <true|false>       (optional) set this flag if you do not
-                                  want to remove nodes that are removed on
-                                  source
- -h,--help                        print this message
- -s,--source <server:port/path>   location of a source tree to copy
- -t,--target <server:port/path>   target location
- -w,--workers <N>                 (optional) number of concurrent workers
-                                  to copy data
+ -c,--copyOnly <true|false>               (optional) set this flag if you
+                                          do not want to remove nodes that
+                                          are removed on source
+ -h,--help                                print this message
+ -i,--ignoreEphemeralNodes <true|false>   (optional) set this flag if you
+                                          do not want to copy ephemeral
+                                          ZNodes
+ -s,--source <server:port/path>           location of a source tree to
+                                          copy
+ -t,--target <server:port/path>           target location
+ -w,--workers <N>                         (optional) number of concurrent
+                                          workers to copy data
 ```
