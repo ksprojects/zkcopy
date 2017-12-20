@@ -12,6 +12,7 @@ public class Node {
     private String path;
     private byte[] data;
     private boolean isEphemeral;
+    private long mtime;
 
     /**
      * Create new root node instance for a given path.
@@ -90,5 +91,14 @@ public class Node {
 
     public void setEphemeral(boolean ephemeral) {
         isEphemeral = ephemeral;
+    }
+
+    public long getMtime() {
+        return mtime;
+    }
+
+    
+    public void setMtime(long mtime) {
+        this.mtime = mtime;
     }
 }

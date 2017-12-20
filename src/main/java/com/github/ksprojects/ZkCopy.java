@@ -22,6 +22,7 @@ public class ZkCopy {
     private static final String SOURCE = "source";
     private static final String TARGET = "target";
     private static final String WORKERS = "workers";
+    private static final String MTIME = "mtime";
     private static final String COPY_ONLY = "copyOnly";
     private static final String IGNORE_EPHEMERAL_NODES = "ignoreEphemeralNodes";
 
@@ -48,7 +49,7 @@ public class ZkCopy {
         Reader reader = new Reader(sourceAddress, threads);
         Node root = reader.read();
         if (root != null) {
-            Writer writer = new Writer(destinationAddress, root, removeDeprecatedNodes, cfg.ignoreEphemeralNodes());
+            Writer writer = new Writer(destinationAddress, root, removeDeprecatedNodes, cfg.ignoreEphemeralNodes(), cfg.mtime());
             writer.write();
         } else {
             LOGGER.error("FAILED");
@@ -69,20 +70,20 @@ public class ZkCopy {
                 printHelp(options);
                 return null;
             }
-            if (!line.hasOption(SOURCE) || !line.hasOption(TARGET)) {
-                return null;
-            }
             String sourceValue = getString(line, SOURCE);
             String targetValue = getString(line, TARGET);
             int workersValue = getInteger(line, WORKERS, DEFAULT_THREADS_NUMBER);
+            long mtime = getLong(line, MTIME, -1);
             boolean copyOnlyValue = getBoolean(line, COPY_ONLY, !DEFAULT_REMOVE_DEPRECATED_NODES);
             boolean ignoreEphemeralNodes = getBoolean(line, IGNORE_EPHEMERAL_NODES, DEFAULT_IGNORE_EPHEMERAL_NODES);
+            
             return ImmutableConfiguration.builder()
                     .source(sourceValue)
                     .target(targetValue)
                     .workers(workersValue)
                     .copyOnly(copyOnlyValue)
                     .ignoreEphemeralNodes(ignoreEphemeralNodes)
+                    .mtime(mtime)
                     .build();
         } catch (ParseException exp) {
             LOGGER.error("Could not parse options.  Reason: " + exp.getMessage());
@@ -102,12 +103,14 @@ public class ZkCopy {
                 .hasArg()
                 .argName("server:port/path")
                 .desc("location of a source tree to copy")
+                .required()
                 .build();
         Option target = Option.builder("t")
                 .longOpt(TARGET)
                 .hasArg()
                 .argName("server:port/path")
                 .desc("target location")
+                .required()
                 .build();
         Option workers = Option.builder("w")
                 .longOpt(WORKERS)
@@ -127,6 +130,12 @@ public class ZkCopy {
                 .argName("true|false")
                 .desc("(optional) set this flag if you do not want to copy ephemeral ZNodes")
                 .build();
+        Option mtime = Option.builder("m")
+                .longOpt(MTIME)
+                .hasArg()
+                .argName("mtime")
+                .desc("(optional) Ignore nodes older than mtime")
+                .build();
 
         options.addOption(help);
         options.addOption(source);
@@ -134,6 +143,7 @@ public class ZkCopy {
         options.addOption(workers);
         options.addOption(copyOnly);
         options.addOption(ignoreEphemeralNodes);
+        options.addOption(mtime);
         return options;
     }
 
@@ -148,6 +158,19 @@ public class ZkCopy {
                 return defaultValue;
             }
             return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            LOGGER.warn("Could not parse option " + name + ": " + e.getMessage());
+            return defaultValue;
+        }
+    }
+    
+    private static long getLong(CommandLine line, String name, long defaultValue) {
+        try {
+            String value = line.getOptionValue(name);
+            if (value == null) {
+                return defaultValue;
+            }
+            return Long.parseLong(value);
         } catch (NumberFormatException e) {
             LOGGER.warn("Could not parse option " + name + ": " + e.getMessage());
             return defaultValue;

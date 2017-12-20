@@ -14,4 +14,8 @@ public interface Configuration {
     boolean copyOnly();
 
     boolean ignoreEphemeralNodes();
+    
+    long mtime();
+    
+    int transactionSize();
 }
