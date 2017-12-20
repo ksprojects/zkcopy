@@ -21,8 +21,7 @@ import org.apache.zookeeper.data.Stat;
 
 public class Writer {
     private static Logger logger = Logger.getLogger(Writer.class);
-    private static int COMMIT_EVERY = 5000;
-
+    
     private Node sourceRoot;
     private String addr;
     private String server;
@@ -38,6 +37,7 @@ public class Writer {
     private long mtime;
     private long maxMtime;
     private Transaction transaction;
+    private int batchSize;
 
     /**
      * Create new {@link Writer} instance.
@@ -54,12 +54,13 @@ public class Writer {
      * @param mtime
      *            znodes modified before this timestamp will not be copied.
      */
-    public Writer(String addr, Node znode, boolean removeDeprecatedNodes, boolean ignoreEphemeralNodes, long mtime) {
+    public Writer(String addr, Node znode, boolean removeDeprecatedNodes, boolean ignoreEphemeralNodes, long mtime, int batchSize) {
         this.addr = addr;
         sourceRoot = znode;
         this.removeDeprecated = removeDeprecatedNodes;
         this.ignoreEphemeralNodes = ignoreEphemeralNodes;
         this.mtime = mtime;
+        this.batchSize = batchSize;
         parseAddr();
     }
 
@@ -78,7 +79,7 @@ public class Writer {
             Node dest = sourceRoot;
             dest.setPath(path);
             logger.info("Writing data...");
-            transaction = new AutoCommitTransactionWrapper(zk, COMMIT_EVERY);
+            transaction = new AutoCommitTransactionWrapper(zk, batchSize);
             update(dest);
             transaction.commit();
             logger.info("Writing data completed.");
