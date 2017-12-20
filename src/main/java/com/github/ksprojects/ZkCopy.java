@@ -16,7 +16,7 @@ public class ZkCopy implements Callable<Void> {
     private static final int DEFAULT_THREADS_NUMBER = 10;
     private static final boolean DEFAULT_COPY_ONLY = false;
     private static final boolean DEFAULT_IGNORE_EPHEMERAL_NODES = true;
-    private static final int DEFAULT_BATCH_SIZE = 10000;
+    private static final int DEFAULT_BATCH_SIZE = 1000;
 
     @Option(names = "--help", usageHelp = true, description = "display this help and exit")
     boolean help;
@@ -53,7 +53,8 @@ public class ZkCopy implements Callable<Void> {
     long mtime = -1;
 
     @Option(names = { "-b", "--batchSize" },
-            description = "Batch write operations into transactions of this many operations.")
+            description = "Batch write operations into transactions of this many operations. " 
+                        + "Batch sizes are limited by the jute.maxbuffer server-side config, usually around 1 MB.")
     int batchSize = DEFAULT_BATCH_SIZE;
 
     /**
