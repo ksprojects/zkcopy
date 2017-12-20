@@ -18,6 +18,8 @@ public class ZkCopy implements Callable<Void> {
     private static final boolean DEFAULT_IGNORE_EPHEMERAL_NODES = true;
     private static final int DEFAULT_BATCH_SIZE = 10000;
 
+    @Option(names = "--help", usageHelp = true, description = "display this help and exit")
+    boolean help;
     
     @Option(names = { "-s", "--source" }, 
             paramLabel = "server:port/path", 
