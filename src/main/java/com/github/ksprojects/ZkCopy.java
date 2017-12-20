@@ -6,8 +6,10 @@ import com.github.ksprojects.zkcopy.writer.Writer;
 import java.util.concurrent.Callable;
 import org.apache.log4j.Logger;
 import picocli.CommandLine;
+import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
+@Command(name = "zkcopy", showDefaultValues = true)
 public class ZkCopy implements Callable<Void> {
 
     private static final Logger LOGGER = Logger.getLogger(ZkCopy.class);
