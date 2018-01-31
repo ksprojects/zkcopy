@@ -1,6 +1,7 @@
 package com.github.ksprojects.zkcopy.reader;
 
 import java.io.IOException;
+import org.apache.log4j.Logger;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooKeeper;
@@ -31,6 +32,7 @@ final class ReaderThread extends Thread implements Watcher {
         return zk;
     }
 
+    @SuppressWarnings("checkstyle:nofinalizer")
     protected void finalize() throws Throwable {
         try {
             if (zk != null) {
