@@ -12,7 +12,7 @@ final class ReaderThread extends Thread implements Watcher {
     ReaderThread(Runnable r, String hostPort) {
         super(r);
         try {
-            zk = new ZooKeeper(hostPort, 3000, this);
+            zk = new ZooKeeper(hostPort, 40000, this);
         } catch (IOException e) {
             // TODO Auto-generated catch block
             e.printStackTrace();
@@ -27,6 +27,16 @@ final class ReaderThread extends Thread implements Watcher {
 
     public ZooKeeper getZooKeeper() {
         return zk;
+    }
+
+    protected void finalize() throws Throwable {
+        try {
+            if(zk != null) {
+                zk.close();
+            }
+        } finally {
+            super.finalize();
+        }
     }
 
 }
