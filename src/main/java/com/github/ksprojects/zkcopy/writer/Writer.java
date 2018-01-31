@@ -55,7 +55,7 @@ public class Writer implements Watcher {
      */
     public void write() {
         try {
-            zk = new ZooKeeper(server, 3000, this);
+            zk = new ZooKeeper(server, 40000, this);
             checkCreatePath(path);
             Node dest = sourceRoot;
             dest.setPath(path);
@@ -71,6 +71,14 @@ public class Writer implements Watcher {
 
         } catch (IOException | KeeperException | InterruptedException e) {
             logger.error("Exception caught while writing nodes", e);
+        } finally {
+            try {
+                if (zk != null) {
+                    zk.close();
+                }
+            } catch (InterruptedException e) {
+                logger.error("Exception caught while closing session", e);
+            }
         }
     }
 
