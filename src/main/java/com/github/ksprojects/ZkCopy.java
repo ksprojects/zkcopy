@@ -75,7 +75,7 @@ public class ZkCopy implements Callable<Void> {
         LOGGER.info("using " + workers + " concurrent workers to copy data");
         LOGGER.info("delete nodes = " + String.valueOf(removeDeprecatedNodes));
         LOGGER.info("ignore ephemeral nodes = " + String.valueOf(ignoreEphemeralNodes));
-        Reader reader = new Reader(source, workers);
+        Reader reader = new Reader(source, workers, sessionTimeout);
         Node root = reader.read();
         if (root != null) {
             ZooKeeper zookeeper = null;

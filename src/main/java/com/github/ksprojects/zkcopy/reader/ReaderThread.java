@@ -5,17 +5,16 @@ import org.apache.log4j.Logger;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooKeeper;
-import org.apache.log4j.Logger;
 
 final class ReaderThread extends Thread implements Watcher {
 
     private ZooKeeper zk = null;
     private static Logger logger = Logger.getLogger(ReaderThread.class);
 
-    ReaderThread(Runnable r, String hostPort) {
+    ReaderThread(Runnable r, String hostPort, int timeout) {
         super(r);
         try {
-            zk = new ZooKeeper(hostPort, 40000, this);
+            zk = new ZooKeeper(hostPort, timeout, this);
         } catch (IOException e) {
             // TODO Auto-generated catch block
             e.printStackTrace();
