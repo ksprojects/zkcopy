@@ -49,7 +49,8 @@ public final class Reader {
 
         Node znode = new Node(path);
 
-        ExecutorService pool = Executors.newFixedThreadPool(threadsNumber, new ReaderThreadFactory(server, timeout));
+        ReaderThreadFactory threadFactory = new ReaderThreadFactory(server, timeout);
+        ExecutorService pool = Executors.newFixedThreadPool(threadsNumber, threadFactory);
         AtomicInteger totalCounter = new AtomicInteger(0);
         AtomicInteger processedCounter = new AtomicInteger(0);
         AtomicBoolean failed = new AtomicBoolean(false);
@@ -69,6 +70,8 @@ public final class Reader {
         } catch (InterruptedException e) {
             logger.error("Await Termination of pool was unsuccessful", e);
             return null;
+        } finally {
+            threadFactory.closeZookeepers();
         }
         if (failed.get()) {
             return null;
