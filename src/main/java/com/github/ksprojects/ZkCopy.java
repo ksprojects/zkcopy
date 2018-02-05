@@ -78,10 +78,17 @@ public class ZkCopy implements Callable<Void> {
         Reader reader = new Reader(source, workers);
         Node root = reader.read();
         if (root != null) {
-            ZooKeeper zookeeper = new ZooKeeper(zkHost(target), sessionTimeout, new LoggingWatcher());
-            Writer writer = new Writer(zookeeper, zkPath(target), root, removeDeprecatedNodes, ignoreEphemeralNodes,
-                    mtime, batchSize);
-            writer.write();
+            ZooKeeper zookeeper = null;
+            try {
+                zookeeper = new ZooKeeper(zkHost(target), sessionTimeout, new LoggingWatcher());
+                Writer writer = new Writer(zookeeper, zkPath(target), root, removeDeprecatedNodes, ignoreEphemeralNodes,
+                        mtime, batchSize);
+                writer.write();
+            } finally {
+                if (zookeeper != null) {
+                    zookeeper.close();
+                }
+            }
         } else {
             LOGGER.error("FAILED");
         }
@@ -108,7 +115,7 @@ public class ZkCopy implements Callable<Void> {
      * @return Zookeeper target path
      */
     private String zkPath(String addr) {
-        return addr.split("/", 2)[1];
+        return '/'  + addr.split("/", 2)[1];
     }
 
 }

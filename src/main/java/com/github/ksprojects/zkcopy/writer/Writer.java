@@ -1,7 +1,6 @@
 package com.github.ksprojects.zkcopy.writer;
 
 import com.github.ksprojects.zkcopy.Node;
-import java.io.IOException;
 import java.util.List;
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.CreateMode;
