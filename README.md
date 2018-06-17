@@ -48,13 +48,10 @@ Usage: zkcopy [-ci] [--help] [--timeout=<sessionTimeout>] [-b=<batchSize>]
                                 Default: -1
   -s, --source=server:port/path
                               location of a source tree to copy
-                                Default: 10-81-26-99-uswest2cdevc:
-                                2181/kafka-scribe/config/topics/scribe.devc.
-                                tmp_batch_service_offerings_config_generator
+
   -t, --target=server:port/path
                               target location
-                                Default: 10-81-22-69-uswest2bdevc:
-                                2181/test-zkcopy-tobyc/topics
+
   -w, --workers=<workers>     number of concurrent workers to copy data
                                 Default: 100
 ```
