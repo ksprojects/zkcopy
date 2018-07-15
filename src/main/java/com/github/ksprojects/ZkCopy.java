@@ -16,12 +16,14 @@ public class ZkCopy {
 
     private static final Logger LOGGER = Logger.getLogger(ZkCopy.class);
     private static final int DEFAULT_THREADS_NUMBER = 10;
+    private static final int DEFAULT_ZK_SESSION_TIMEOUT = 3000;
     private static final boolean DEFAULT_REMOVE_DEPRECATED_NODES = true;
     private static final boolean DEFAULT_IGNORE_EPHEMERAL_NODES = true;
     private static final String HELP = "help";
     private static final String SOURCE = "source";
     private static final String TARGET = "target";
     private static final String WORKERS = "workers";
+    private static final String SESSION_TIME_OUT = "sessionTimeout";
     private static final String COPY_ONLY = "copyOnly";
     private static final String IGNORE_EPHEMERAL_NODES = "ignoreEphemeralNodes";
 
@@ -40,6 +42,7 @@ public class ZkCopy {
         }
         String sourceAddress = cfg.source();
         String destinationAddress = cfg.target();
+        int sessionTimeout = cfg.sessionTimeout();
         int threads = cfg.workers();
         boolean removeDeprecatedNodes = !cfg.copyOnly();
         LOGGER.info("using " + threads + " concurrent workers to copy data");
@@ -48,7 +51,7 @@ public class ZkCopy {
         Reader reader = new Reader(sourceAddress, threads);
         Node root = reader.read();
         if (root != null) {
-            Writer writer = new Writer(destinationAddress, root, removeDeprecatedNodes, cfg.ignoreEphemeralNodes());
+            Writer writer = new Writer(destinationAddress, root, removeDeprecatedNodes, cfg.ignoreEphemeralNodes(), sessionTimeout);
             writer.write();
         } else {
             LOGGER.error("FAILED");
@@ -75,6 +78,7 @@ public class ZkCopy {
             String sourceValue = getString(line, SOURCE);
             String targetValue = getString(line, TARGET);
             int workersValue = getInteger(line, WORKERS, DEFAULT_THREADS_NUMBER);
+            int sessionTimeout = getInteger(line, SESSION_TIME_OUT, DEFAULT_ZK_SESSION_TIMEOUT);
             boolean copyOnlyValue = getBoolean(line, COPY_ONLY, !DEFAULT_REMOVE_DEPRECATED_NODES);
             boolean ignoreEphemeralNodes = getBoolean(line, IGNORE_EPHEMERAL_NODES, DEFAULT_IGNORE_EPHEMERAL_NODES);
             return ImmutableConfiguration.builder()
@@ -83,6 +87,7 @@ public class ZkCopy {
                     .workers(workersValue)
                     .copyOnly(copyOnlyValue)
                     .ignoreEphemeralNodes(ignoreEphemeralNodes)
+                    .sessionTimeout(sessionTimeout)
                     .build();
         } catch (ParseException exp) {
             LOGGER.error("Could not parse options.  Reason: " + exp.getMessage());
@@ -127,6 +132,12 @@ public class ZkCopy {
                 .argName("true|false")
                 .desc("(optional) set this flag if you do not want to copy ephemeral ZNodes")
                 .build();
+        Option sessionTimeout = Option.builder("sto")
+                .longOpt(IGNORE_EPHEMERAL_NODES)
+                .hasArg()
+                .argName("N")
+                .desc("(optional) session timeout for zk connection in milli-seconds")
+                .build();
 
         options.addOption(help);
         options.addOption(source);
@@ -134,6 +145,7 @@ public class ZkCopy {
         options.addOption(workers);
         options.addOption(copyOnly);
         options.addOption(ignoreEphemeralNodes);
+        options.addOption(sessionTimeout);
         return options;
     }
 
@@ -170,6 +182,7 @@ public class ZkCopy {
     private static Configuration parseLegacyConfiguration() {
         String sourceAddress = getSource();
         String destinationAddress = getDestination();
+        int sessionTimeout = getSessionTimeout();
         if (sourceAddress == null || destinationAddress == null) {
             return null;
         }
@@ -179,6 +192,7 @@ public class ZkCopy {
                 .source(sourceAddress)
                 .target(destinationAddress)
                 .workers(threads)
+                .sessionTimeout(sessionTimeout)
                 .copyOnly(!removeDeprecatedNodes)
                 .build();
     }
@@ -189,6 +203,20 @@ public class ZkCopy {
 
     private static String getSource() {
         return System.getProperty("source");
+    }
+
+    private static int getSessionTimeout() {
+        String sessionTimeout = System.getProperty("sessionTimeout");
+        int n = DEFAULT_ZK_SESSION_TIMEOUT;
+        if (sessionTimeout == null) {
+            return DEFAULT_ZK_SESSION_TIMEOUT;
+        }
+        try {
+            n = Integer.valueOf(sessionTimeout);
+        } catch (NumberFormatException e) {
+            LOGGER.error("Can't parse threads number - \"" + sessionTimeout + "\"", e);
+        }
+        return n;
     }
 
     private static int getThreadsNumber() {

@@ -18,6 +18,7 @@ public class Writer implements Watcher {
     private String addr;
     private String server;
     private String path;
+    private int sessionTimeout;
     private ZooKeeper zk;
     private boolean ignoreEphemeralNodes;
     private boolean removeDeprecated;
@@ -36,11 +37,12 @@ public class Writer implements Watcher {
      * @param ignoreEphemeralNodes {@code true} if ephemeral nodes
      * should not be copied
      */
-    public Writer(String addr, Node znode, boolean removeDeprecatedNodes, boolean ignoreEphemeralNodes) {
+    public Writer(String addr, Node znode, boolean removeDeprecatedNodes, boolean ignoreEphemeralNodes, int sessionTimeout) {
         this.addr = addr;
         sourceRoot = znode;
         this.removeDeprecated = removeDeprecatedNodes;
         this.ignoreEphemeralNodes = ignoreEphemeralNodes;
+        this.sessionTimeout = sessionTimeout;
         parseAddr();
     }
 
@@ -55,7 +57,7 @@ public class Writer implements Watcher {
      */
     public void write() {
         try {
-            zk = new ZooKeeper(server, 3000, this);
+            zk = new ZooKeeper(server, sessionTimeout, this);
             checkCreatePath(path);
             Node dest = sourceRoot;
             dest.setPath(path);
