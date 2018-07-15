@@ -9,6 +9,8 @@ public interface Configuration {
 
     String target();
 
+    int sessionTimeout();
+
     int workers();
 
     boolean copyOnly();
