@@ -133,7 +133,7 @@ public class ZkCopy {
                 .desc("(optional) set this flag if you do not want to copy ephemeral ZNodes")
                 .build();
         Option sessionTimeout = Option.builder("sto")
-                .longOpt(IGNORE_EPHEMERAL_NODES)
+                .longOpt(SESSION_TIME_OUT)
                 .hasArg()
                 .argName("N")
                 .desc("(optional) session timeout for zk connection in milli-seconds")
