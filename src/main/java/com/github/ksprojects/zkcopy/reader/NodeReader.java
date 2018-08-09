@@ -46,6 +46,7 @@ final class NodeReader implements Runnable {
                 znode.setEphemeral(true);
             }
             znode.setData(data);
+            znode.setMtime(stat.getMtime());
             List<String> children = zk.getChildren(path, false);
             for (String child : children) {
                 if ("zookeeper".equals(child)) {

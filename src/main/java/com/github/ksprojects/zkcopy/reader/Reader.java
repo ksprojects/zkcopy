@@ -19,16 +19,19 @@ public final class Reader {
     private final String source;
     private String server;
     private String path;
+    private int timeout;
 
     /**
      * Create new reader instance for a given source.
      *
      * @param source address of the data to read
      * @param threads number of concurrent thread for reading data
+     * @param timeout the session timeout for read operations
      */
-    public Reader(String source, int threads) {
+    public Reader(String source, int threads, int timeout) {
         threadsNumber = threads;
         this.source = source;
+        this.timeout = timeout;
         parseSource();
     }
 
@@ -46,7 +49,8 @@ public final class Reader {
 
         Node znode = new Node(path);
 
-        ExecutorService pool = Executors.newFixedThreadPool(threadsNumber, new ReaderThreadFactory(server));
+        ReaderThreadFactory threadFactory = new ReaderThreadFactory(server, timeout);
+        ExecutorService pool = Executors.newFixedThreadPool(threadsNumber, threadFactory);
         AtomicInteger totalCounter = new AtomicInteger(0);
         AtomicInteger processedCounter = new AtomicInteger(0);
         AtomicBoolean failed = new AtomicBoolean(false);
@@ -66,6 +70,8 @@ public final class Reader {
         } catch (InterruptedException e) {
             logger.error("Await Termination of pool was unsuccessful", e);
             return null;
+        } finally {
+            threadFactory.closeZookeepers();
         }
         if (failed.get()) {
             return null;

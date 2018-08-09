@@ -1,6 +1,5 @@
 package com.github.ksprojects.zkcopy.reader;
 
-import java.io.IOException;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooKeeper;
@@ -9,14 +8,9 @@ final class ReaderThread extends Thread implements Watcher {
 
     private ZooKeeper zk = null;
 
-    ReaderThread(Runnable r, String hostPort) {
+    ReaderThread(Runnable r, ZooKeeper zk) {
         super(r);
-        try {
-            zk = new ZooKeeper(hostPort, 3000, this);
-        } catch (IOException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
+        this.zk = zk;
     }
 
     @Override
@@ -28,5 +22,4 @@ final class ReaderThread extends Thread implements Watcher {
     public ZooKeeper getZooKeeper() {
         return zk;
     }
-
 }

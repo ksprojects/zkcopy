@@ -1,224 +1,121 @@
 package com.github.ksprojects;
 
+import com.github.ksprojects.zkcopy.LoggingWatcher;
 import com.github.ksprojects.zkcopy.Node;
 import com.github.ksprojects.zkcopy.reader.Reader;
 import com.github.ksprojects.zkcopy.writer.Writer;
-import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.CommandLineParser;
-import org.apache.commons.cli.DefaultParser;
-import org.apache.commons.cli.HelpFormatter;
-import org.apache.commons.cli.Option;
-import org.apache.commons.cli.Options;
-import org.apache.commons.cli.ParseException;
+import java.util.concurrent.Callable;
 import org.apache.log4j.Logger;
+import org.apache.zookeeper.ZooKeeper;
+import picocli.CommandLine;
+import picocli.CommandLine.Command;
+import picocli.CommandLine.Option;
 
-public class ZkCopy {
+@Command(name = "zkcopy", showDefaultValues = true)
+public class ZkCopy implements Callable<Void> {
 
     private static final Logger LOGGER = Logger.getLogger(ZkCopy.class);
     private static final int DEFAULT_THREADS_NUMBER = 10;
-    private static final boolean DEFAULT_REMOVE_DEPRECATED_NODES = true;
+    private static final boolean DEFAULT_COPY_ONLY = false;
     private static final boolean DEFAULT_IGNORE_EPHEMERAL_NODES = true;
-    private static final String HELP = "help";
-    private static final String SOURCE = "source";
-    private static final String TARGET = "target";
-    private static final String WORKERS = "workers";
-    private static final String COPY_ONLY = "copyOnly";
-    private static final String IGNORE_EPHEMERAL_NODES = "ignoreEphemeralNodes";
+    private static final int DEFAULT_BATCH_SIZE = 1000;
+
+    @Option(names = "--help", usageHelp = true, description = "display this help and exit")
+    boolean help;
+    
+    @Option(names = { "-s", "--source" }, 
+            paramLabel = "server:port/path", 
+            required = true, 
+            description = "location of a source tree to copy")
+    String source;
+
+    @Option(names = { "-t", "--target" }, 
+            paramLabel = "server:port/path", 
+            required = true, 
+            description = "target location")
+    String target;
+
+    @Option(names = { "-w", "--workers" }, 
+            description = "number of concurrent workers to copy data")
+    int workers = DEFAULT_THREADS_NUMBER;
+
+    @Option(names = { "-c", "--copyOnly" },
+            description = "set this flag if you do not want to remove nodes that are removed on source",
+            arity = "0..1")
+    boolean copyOnly = DEFAULT_COPY_ONLY;
+
+    @Option(names = { "-i", "--ignoreEphemeralNodes" },
+            description = "set this flag to false if you do not want to copy ephemeral ZNodes",
+            arity = "0..1")
+   
+    boolean ignoreEphemeralNodes = DEFAULT_IGNORE_EPHEMERAL_NODES;
+
+    @Option(names = { "-m", "--mtime" },
+            description = "Ignore nodes older than mtime")
+    long mtime = -1;
+    
+    @Option(names = { "--timeout" }, description = "Session timeout in milliseconds")
+    int sessionTimeout = 40000;
+
+    @Option(names = { "-b", "--batchSize" },
+            description = "Batch write operations into transactions of this many operations. " 
+                        + "Batch sizes are limited by the jute.maxbuffer server-side config, usually around 1 MB.")
+    int batchSize = DEFAULT_BATCH_SIZE;
 
     /**
      * Main entry point - start ZkCopy.
      */
     public static void main(String[] args) {
-        Configuration cfg = parseLegacyConfiguration();
-        if (cfg == null) {
-            cfg = parseConfiguration(args);
-        }
-        if (cfg == null) {
-            Options options = createOptions();
-            printHelp(options);
-            return;
-        }
-        String sourceAddress = cfg.source();
-        String destinationAddress = cfg.target();
-        int threads = cfg.workers();
-        boolean removeDeprecatedNodes = !cfg.copyOnly();
-        LOGGER.info("using " + threads + " concurrent workers to copy data");
+        CommandLine.call(new ZkCopy(), System.err, args);
+    }
+
+    @Override
+    public Void call() throws Exception {
+        boolean removeDeprecatedNodes = !copyOnly;
+        LOGGER.info("using " + workers + " concurrent workers to copy data");
         LOGGER.info("delete nodes = " + String.valueOf(removeDeprecatedNodes));
-        LOGGER.info("ignore ephemeral nodes = " + String.valueOf(cfg.ignoreEphemeralNodes()));
-        Reader reader = new Reader(sourceAddress, threads);
+        LOGGER.info("ignore ephemeral nodes = " + String.valueOf(ignoreEphemeralNodes));
+        Reader reader = new Reader(source, workers, sessionTimeout);
         Node root = reader.read();
         if (root != null) {
-            Writer writer = new Writer(destinationAddress, root, removeDeprecatedNodes, cfg.ignoreEphemeralNodes());
-            writer.write();
+            ZooKeeper zookeeper = null;
+            try {
+                zookeeper = new ZooKeeper(zkHost(target), sessionTimeout, new LoggingWatcher());
+                Writer writer = new Writer(zookeeper, zkPath(target), root, removeDeprecatedNodes, ignoreEphemeralNodes,
+                        mtime, batchSize);
+                writer.write();
+            } finally {
+                if (zookeeper != null) {
+                    zookeeper.close();
+                }
+            }
         } else {
             LOGGER.error("FAILED");
         }
+        return null;
     }
-
-    private static void printHelp(Options options) {
-        HelpFormatter formatter = new HelpFormatter();
-        formatter.printHelp("zkcopy", options);
+    
+    
+    /**
+     * Returns the host part of the ZK target
+     * 
+     * e.g. if passed 127.0.0.1:1234/parent/child, returns 127.0.0.1:1234
+     * @param addr the target address
+     * @return Zookeeper Host/port
+     */
+    private String zkHost(String addr) {
+        return addr.split("/", 2)[0];
     }
-
-    private static Configuration parseConfiguration(String[] args) {
-        Options options = createOptions();
-        CommandLineParser parser = new DefaultParser();
-        try {
-            CommandLine line = parser.parse(options, args);
-            if (line.hasOption(HELP)) {
-                printHelp(options);
-                return null;
-            }
-            if (!line.hasOption(SOURCE) || !line.hasOption(TARGET)) {
-                return null;
-            }
-            String sourceValue = getString(line, SOURCE);
-            String targetValue = getString(line, TARGET);
-            int workersValue = getInteger(line, WORKERS, DEFAULT_THREADS_NUMBER);
-            boolean copyOnlyValue = getBoolean(line, COPY_ONLY, !DEFAULT_REMOVE_DEPRECATED_NODES);
-            boolean ignoreEphemeralNodes = getBoolean(line, IGNORE_EPHEMERAL_NODES, DEFAULT_IGNORE_EPHEMERAL_NODES);
-            return ImmutableConfiguration.builder()
-                    .source(sourceValue)
-                    .target(targetValue)
-                    .workers(workersValue)
-                    .copyOnly(copyOnlyValue)
-                    .ignoreEphemeralNodes(ignoreEphemeralNodes)
-                    .build();
-        } catch (ParseException exp) {
-            LOGGER.error("Could not parse options.  Reason: " + exp.getMessage());
-            return null;
-        }
-    }
-
-    private static Options createOptions() {
-        Options options = new Options();
-
-        Option help = Option.builder("h")
-                .longOpt(HELP)
-                .desc("print this message")
-                .build();
-        Option source = Option.builder("s")
-                .longOpt(SOURCE)
-                .hasArg()
-                .argName("server:port/path")
-                .desc("location of a source tree to copy")
-                .build();
-        Option target = Option.builder("t")
-                .longOpt(TARGET)
-                .hasArg()
-                .argName("server:port/path")
-                .desc("target location")
-                .build();
-        Option workers = Option.builder("w")
-                .longOpt(WORKERS)
-                .hasArg()
-                .argName("N")
-                .desc("(optional) number of concurrent workers to copy data")
-                .build();
-        Option copyOnly = Option.builder("c")
-                .longOpt(COPY_ONLY)
-                .hasArg()
-                .argName("true|false")
-                .desc("(optional) set this flag if you do not want to remove nodes that are removed on source")
-                .build();
-        Option ignoreEphemeralNodes = Option.builder("i")
-                .longOpt(IGNORE_EPHEMERAL_NODES)
-                .hasArg()
-                .argName("true|false")
-                .desc("(optional) set this flag if you do not want to copy ephemeral ZNodes")
-                .build();
-
-        options.addOption(help);
-        options.addOption(source);
-        options.addOption(target);
-        options.addOption(workers);
-        options.addOption(copyOnly);
-        options.addOption(ignoreEphemeralNodes);
-        return options;
-    }
-
-    private static String getString(CommandLine line, String name) {
-        return line.getOptionValue(name);
-    }
-
-    private static int getInteger(CommandLine line, String name, int defaultValue) {
-        try {
-            String value = line.getOptionValue(name);
-            if (value == null) {
-                return defaultValue;
-            }
-            return Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-            LOGGER.warn("Could not parse option " + name + ": " + e.getMessage());
-            return defaultValue;
-        }
-    }
-
-    private static boolean getBoolean(CommandLine line, String name, boolean defaultValue) {
-        try {
-            String value = line.getOptionValue(name);
-            if (value == null) {
-                return defaultValue;
-            }
-            return Boolean.parseBoolean(value);
-        } catch (NumberFormatException e) {
-            LOGGER.warn("Could not parse option " + name + ": " + e.getMessage());
-            return defaultValue;
-        }
-    }
-
-    private static Configuration parseLegacyConfiguration() {
-        String sourceAddress = getSource();
-        String destinationAddress = getDestination();
-        if (sourceAddress == null || destinationAddress == null) {
-            return null;
-        }
-        int threads = getThreadsNumber();
-        boolean removeDeprecatedNodes = getRemoveDeprecatedNodes();
-        return ImmutableConfiguration.builder()
-                .source(sourceAddress)
-                .target(destinationAddress)
-                .workers(threads)
-                .copyOnly(!removeDeprecatedNodes)
-                .build();
-    }
-
-    private static String getDestination() {
-        return System.getProperty("destination");
-    }
-
-    private static String getSource() {
-        return System.getProperty("source");
-    }
-
-    private static int getThreadsNumber() {
-        String threads = System.getProperty("threads");
-        int n = DEFAULT_THREADS_NUMBER;
-        if (threads == null) {
-            return DEFAULT_THREADS_NUMBER;
-        }
-        try {
-            n = Integer.valueOf(threads);
-        } catch (NumberFormatException e) {
-            LOGGER.error("Can't parse threads number - \"" + threads + "\"", e);
-        }
-        return n;
-    }
-
-    private static boolean getRemoveDeprecatedNodes() {
-        String s = System.getProperty("removeDeprecatedNodes");
-        boolean ans = DEFAULT_REMOVE_DEPRECATED_NODES;
-        if (s == null) {
-            return DEFAULT_REMOVE_DEPRECATED_NODES;
-        }
-        try {
-            ans = Boolean.valueOf(s);
-        } catch (NumberFormatException e) {
-            LOGGER.error("Can't parse 'removeDeprecatedNodes' - \"" + s + "\"", e);
-        }
-        return ans;
+    
+    /**
+     * Returns the path of the ZK target
+     * 
+     * e.g. if passed 127.0.0.1:1234/parent/child, returns `parent/child`
+     * @param addr the target address
+     * @return Zookeeper target path
+     */
+    private String zkPath(String addr) {
+        return '/'  + addr.split("/", 2)[1];
     }
 
 }
-
-

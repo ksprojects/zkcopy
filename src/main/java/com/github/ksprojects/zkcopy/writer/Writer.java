@@ -1,23 +1,20 @@
 package com.github.ksprojects.zkcopy.writer;
 
 import com.github.ksprojects.zkcopy.Node;
-import java.io.IOException;
 import java.util.List;
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
-import org.apache.zookeeper.WatchedEvent;
-import org.apache.zookeeper.Watcher;
+import org.apache.zookeeper.Transaction;
 import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.data.Stat;
 
-public class Writer implements Watcher {
-    private static Logger logger = Logger.getLogger(Writer.class);
+public class Writer {
+    static Logger logger = Logger.getLogger(Writer.class);
+    
     private Node sourceRoot;
-    private String addr;
-    private String server;
-    private String path;
+    private String destPath;
     private ZooKeeper zk;
     private boolean ignoreEphemeralNodes;
     private boolean removeDeprecated;
@@ -25,67 +22,60 @@ public class Writer implements Watcher {
     private long deletedEphemeral = 0;
     private long nodesUpdated = 0;
     private long nodesCreated = 0;
+    private long nodesSkipped = 0;
+    private long mtime;
+    private long maxMtime;
+    private Transaction transaction;
+    private int batchSize;
 
     /**
      * Create new {@link Writer} instance.
      *
-     * @param addr address of a server to write data
-     * @param znode root node to copy data from
-     * @param removeDeprecatedNodes {@code true} if nodes that does
-     * not exist in source should be removed
-     * @param ignoreEphemeralNodes {@code true} if ephemeral nodes
-     * should not be copied
+     * @param zk
+     *            Zookeeper server
+     * @param znode
+     *            root node to copy data from
+     * @param removeDeprecatedNodes
+     *            {@code true} if nodes that does not exist in source should be
+     *            removed
+     * @param ignoreEphemeralNodes
+     *            {@code true} if ephemeral nodes should not be copied
+     * @param mtime
+     *            znodes modified before this timestamp will not be copied.
      */
-    public Writer(String addr, Node znode, boolean removeDeprecatedNodes, boolean ignoreEphemeralNodes) {
-        this.addr = addr;
-        sourceRoot = znode;
+    public Writer(ZooKeeper zk, String destPath, Node znode, boolean removeDeprecatedNodes, boolean ignoreEphemeralNodes, long mtime, int batchSize) {
+        this.zk = zk;
+        this.destPath = destPath;
+        this.sourceRoot = znode;
         this.removeDeprecated = removeDeprecatedNodes;
         this.ignoreEphemeralNodes = ignoreEphemeralNodes;
-        parseAddr();
+        this.mtime = mtime;
+        this.batchSize = batchSize;
     }
-
-    private void parseAddr() {
-        int p = addr.indexOf('/');
-        server = addr.substring(0, p);
-        path = addr.substring(p);
-    }
-
+    
     /**
      * Start process of writing data to the target.
      */
     public void write() {
         try {
-            zk = new ZooKeeper(server, 3000, this);
-            checkCreatePath(path);
             Node dest = sourceRoot;
-            dest.setPath(path);
+            dest.setPath(destPath);
             logger.info("Writing data...");
+            transaction = new AutoCommitTransactionWrapper(zk, batchSize);
             update(dest);
+            transaction.commit();
             logger.info("Writing data completed.");
             logger.info("Wrote " + (nodesCreated + nodesUpdated) + " nodes");
             logger.info("Created " + nodesCreated + " nodes; Updated " + nodesUpdated + " nodes");
             logger.info("Ignored " + ephemeralIgnored + " ephemeral nodes");
+            logger.info("Skipped " + nodesSkipped + " nodes older than " + mtime);
+            logger.info("Max mtime of copied nodes: " + maxMtime);
             if (deletedEphemeral > 0) {
                 logger.info("Deleted " + deletedEphemeral + " ephemeral nodes");
             }
 
-        } catch (IOException | KeeperException | InterruptedException e) {
+        } catch (KeeperException | InterruptedException e) {
             logger.error("Exception caught while writing nodes", e);
-        }
-    }
-
-    private void checkCreatePath(String path) throws KeeperException, InterruptedException {
-        logger.info("Checking path " + path);
-        String[] l = path.split("/");
-        StringBuffer b = new StringBuffer();
-        for (int i = 1; i < l.length; i++) {
-            b.append('/');
-            b.append(l[i]);
-            Stat stat = zk.exists(b.toString(), false);
-            if (stat == null) {
-                zk.create(b.toString(), null, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
-                logger.info("Created " + b.toString());
-            }
         }
     }
 
@@ -96,20 +86,17 @@ public class Writer implements Watcher {
             Stat stat = zk.exists(path, false);
             // only delete ephemeral nodes if they've been copied over persistently before
             if (stat != null && stat.getEphemeralOwner() == 0) {
-                zk.delete(path, stat.getVersion());
+                transaction.delete(path, stat.getVersion());
                 deletedEphemeral++;
             }
             return;
         }
 
-        // 1. Update or create current node
-        Stat stat = zk.exists(path, false);
-        if (stat != null) {
-            zk.setData(path, node.getData(), -1);
-            nodesUpdated++;
+        if (node.getMtime() > mtime) {
+            upsertNode(node);
+            maxMtime = Math.max(node.getMtime(), maxMtime);
         } else {
-            zk.create(path, node.getData(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
-            nodesCreated++;
+            nodesSkipped++;
         }
 
         // 2. Recursively update or create children
@@ -119,12 +106,49 @@ public class Writer implements Watcher {
 
         if (removeDeprecated) {
             // 3. Remove deprecated children
-            List<String> destChildren = zk.getChildren(path, false);
-            for (String child : destChildren) {
-                if (!node.getChildrenNamed().contains(child)) {
-                    delete(node.getAbsolutePath() + "/" + child);
+            try {
+                List<String> destChildren = zk.getChildren(path, false);
+                for (String child : destChildren) {
+                    if (!node.getChildrenNamed().contains(child)) {
+                        delete(node.getAbsolutePath() + "/" + child);
+                    }
                 }
+            } catch (KeeperException e) {
+                if (e.code() == KeeperException.Code.NONODE) {
+                    // If there was no such node before this transaction started, then it can't have
+                    // any children and is therefore safe to ignore
+                    return;
+                }
+                throw e;
             }
+        }
+    }
+
+    /**
+     * Updates or creates the given node.
+     * 
+     * @param node
+     *            The node to copy
+     * @throws KeeperException
+     *             If the server signals an error
+     * @throws InterruptedException
+     *             If the server transaction is interrupted
+     */
+    private void upsertNode(Node node) throws KeeperException, InterruptedException {
+        String nodePath = node.getAbsolutePath();
+        // 1. Update or create current node
+        Stat stat = zk.exists(nodePath, false);
+        if (stat != null) {
+            logger.debug("Attempting to update " + nodePath);
+            transaction.setData(nodePath, node.getData(), -1);
+            nodesUpdated++;
+        } else {
+            logger.debug("Attempting to create " + nodePath);
+            transaction.create(nodePath, node.getData(), Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+            nodesCreated++;
+        }
+        if (nodesUpdated % 100 == 0) {
+            logger.debug(String.format("Updated: %s, current node mtime %s", nodesUpdated, node.getMtime()));
         }
     }
 
@@ -133,14 +157,8 @@ public class Writer implements Watcher {
         for (String child : children) {
             delete(path + "/" + child);
         }
-        zk.delete(path, -1);
+        transaction.delete(path, -1);
         logger.info("Deleted node " + path);
-    }
-
-    @Override
-    public void process(WatchedEvent event) {
-        // TODO Auto-generated method stub
-
     }
 
 }
