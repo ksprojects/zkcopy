@@ -110,7 +110,7 @@ public class ZkCopy implements Callable<Void> {
     /**
      * Returns the path of the ZK target
      * 
-     * e.g. if passed 127.0.0.1:1234/parent/child, returns `parent/child`
+     * e.g. if passed 127.0.0.1:1234/parent/child, returns `/parent/child`
      * @param addr the target address
      * @return Zookeeper target path
      */
