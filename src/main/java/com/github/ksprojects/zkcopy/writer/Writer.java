@@ -110,6 +110,10 @@ public class Writer {
                 List<String> destChildren = zk.getChildren(path, false);
                 for (String child : destChildren) {
                     if (!node.getChildrenNamed().contains(child)) {
+                        // skip zookeeper node under the "/"
+                        if ("zookeeper".equals(child)){
+                            continue;
+                        }
                         delete(node.getAbsolutePath() + "/" + child);
                     }
                 }
