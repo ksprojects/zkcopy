@@ -1,7 +1,9 @@
 package com.github.ksprojects.zkcopy.writer;
 
 import com.github.ksprojects.zkcopy.Node;
+
 import java.util.List;
+
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
@@ -11,39 +13,48 @@ import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.data.Stat;
 
 public class Writer {
+    
     static Logger logger = Logger.getLogger(Writer.class);
     
     private Node sourceRoot;
+    
     private String destPath;
+    
     private ZooKeeper zk;
+    
     private boolean ignoreEphemeralNodes;
+    
     private boolean removeDeprecated;
+    
     private long ephemeralIgnored = 0;
+    
     private long deletedEphemeral = 0;
+    
     private long nodesUpdated = 0;
+    
     private long nodesCreated = 0;
+    
     private long nodesSkipped = 0;
+    
     private long mtime;
+    
     private long maxMtime;
+    
     private Transaction transaction;
+    
     private int batchSize;
-
+    
     /**
      * Create new {@link Writer} instance.
      *
-     * @param zk
-     *            Zookeeper server
-     * @param znode
-     *            root node to copy data from
-     * @param removeDeprecatedNodes
-     *            {@code true} if nodes that does not exist in source should be
-     *            removed
-     * @param ignoreEphemeralNodes
-     *            {@code true} if ephemeral nodes should not be copied
-     * @param mtime
-     *            znodes modified before this timestamp will not be copied.
+     * @param zk                    Zookeeper server
+     * @param znode                 root node to copy data from
+     * @param removeDeprecatedNodes {@code true} if nodes that does not exist in source should be removed
+     * @param ignoreEphemeralNodes  {@code true} if ephemeral nodes should not be copied
+     * @param mtime                 znodes modified before this timestamp will not be copied.
      */
-    public Writer(ZooKeeper zk, String destPath, Node znode, boolean removeDeprecatedNodes, boolean ignoreEphemeralNodes, long mtime, int batchSize) {
+    public Writer(ZooKeeper zk, String destPath, Node znode, boolean removeDeprecatedNodes,
+            boolean ignoreEphemeralNodes, long mtime, int batchSize) {
         this.zk = zk;
         this.destPath = destPath;
         this.sourceRoot = znode;
@@ -73,12 +84,12 @@ public class Writer {
             if (deletedEphemeral > 0) {
                 logger.info("Deleted " + deletedEphemeral + " ephemeral nodes");
             }
-
+            
         } catch (KeeperException | InterruptedException e) {
             logger.error("Exception caught while writing nodes", e);
         }
     }
-
+    
     private void update(Node node) throws KeeperException, InterruptedException {
         String path = node.getAbsolutePath();
         if (ignoreEphemeralNodes && node.isEphemeral()) {
@@ -91,24 +102,28 @@ public class Writer {
             }
             return;
         }
-
+        
         if (node.getMtime() > mtime) {
             upsertNode(node);
             maxMtime = Math.max(node.getMtime(), maxMtime);
         } else {
             nodesSkipped++;
         }
-
+        
         // 2. Recursively update or create children
         for (Node child : node.getChildren()) {
             update(child);
         }
-
+        
         if (removeDeprecated) {
             // 3. Remove deprecated children
             try {
                 List<String> destChildren = zk.getChildren(path, false);
                 for (String child : destChildren) {
+                    if ("zookeeper".equals(child)) {
+                        // reserved
+                        continue;
+                    }
                     if (!node.getChildrenNamed().contains(child)) {
                         delete(node.getAbsolutePath() + "/" + child);
                     }
@@ -123,16 +138,13 @@ public class Writer {
             }
         }
     }
-
+    
     /**
      * Updates or creates the given node.
-     * 
-     * @param node
-     *            The node to copy
-     * @throws KeeperException
-     *             If the server signals an error
-     * @throws InterruptedException
-     *             If the server transaction is interrupted
+     *
+     * @param node The node to copy
+     * @throws KeeperException      If the server signals an error
+     * @throws InterruptedException If the server transaction is interrupted
      */
     private void upsertNode(Node node) throws KeeperException, InterruptedException {
         String nodePath = node.getAbsolutePath();
@@ -151,7 +163,7 @@ public class Writer {
             logger.debug(String.format("Updated: %s, current node mtime %s", nodesUpdated, node.getMtime()));
         }
     }
-
+    
     private void delete(String path) throws KeeperException, InterruptedException {
         List<String> children = zk.getChildren(path, false);
         for (String child : children) {
@@ -160,5 +172,5 @@ public class Writer {
         transaction.delete(path, -1);
         logger.info("Deleted node " + path);
     }
-
+    
 }
