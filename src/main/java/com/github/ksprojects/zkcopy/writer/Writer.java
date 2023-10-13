@@ -114,7 +114,11 @@ public class Writer {
                         if ("zookeeper".equals(child)){
                             continue;
                         }
-                        delete(node.getAbsolutePath() + "/" + child);
+                        if ("/".equals(node.getAbsolutePath())){
+                            delete("/" + child);
+                        }else {
+                            delete(node.getAbsolutePath() + "/" + child);
+                        }
                     }
                 }
             } catch (KeeperException e) {
