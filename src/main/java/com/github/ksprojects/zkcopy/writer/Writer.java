@@ -111,12 +111,12 @@ public class Writer {
                 for (String child : destChildren) {
                     if (!node.getChildrenNamed().contains(child)) {
                         // skip zookeeper node under the "/"
-                        if ("zookeeper".equals(child)){
+                        if ("zookeeper".equals(child)) {
                             continue;
                         }
-                        if ("/".equals(node.getAbsolutePath())){
+                        if ("/".equals(node.getAbsolutePath())) {
                             delete("/" + child);
-                        }else {
+                        } else {
                             delete(node.getAbsolutePath() + "/" + child);
                         }
                     }
