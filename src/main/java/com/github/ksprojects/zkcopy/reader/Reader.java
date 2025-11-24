@@ -16,6 +16,7 @@ import org.apache.log4j.Logger;
 public final class Reader {
     private static Logger logger = Logger.getLogger(Reader.class);
     private final int threadsNumber;
+    private final boolean ignoreEphemeralNodes;
     private final String source;
     private String server;
     private String path;
@@ -28,10 +29,11 @@ public final class Reader {
      * @param threads number of concurrent thread for reading data
      * @param timeout the session timeout for read operations
      */
-    public Reader(String source, int threads, int timeout) {
+    public Reader(String source, int threads, int timeout, boolean ignoreEphemeralNodes) {
         threadsNumber = threads;
         this.source = source;
         this.timeout = timeout;
+        this.ignoreEphemeralNodes = ignoreEphemeralNodes;
         parseSource();
     }
 
@@ -54,7 +56,7 @@ public final class Reader {
         AtomicInteger totalCounter = new AtomicInteger(0);
         AtomicInteger processedCounter = new AtomicInteger(0);
         AtomicBoolean failed = new AtomicBoolean(false);
-        pool.execute(new NodeReader(pool, znode, totalCounter, processedCounter, failed));
+        pool.execute(new NodeReader(pool, znode, totalCounter, processedCounter, failed, ignoreEphemeralNodes));
         try {
             while (true) {
                 if (pool.awaitTermination(1, TimeUnit.SECONDS)) {

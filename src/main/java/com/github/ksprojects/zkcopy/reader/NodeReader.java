@@ -18,14 +18,16 @@ final class NodeReader implements Runnable {
     private final ExecutorService pool;
     private final AtomicInteger totalCounter;
     private final AtomicInteger processedCounter;
+    private final boolean ignoreEphemeralNodes;
 
     private final AtomicBoolean failed;
 
-    NodeReader(ExecutorService pool, Node znode, AtomicInteger totalCounter, AtomicInteger processedCounter, AtomicBoolean failed) {
+    NodeReader(ExecutorService pool, Node znode, AtomicInteger totalCounter, AtomicInteger processedCounter, AtomicBoolean failed, boolean ignoreEphemeralNodes) {
         this.znode = znode;
         this.pool = pool;
         this.totalCounter = totalCounter;
         this.processedCounter = processedCounter;
+        this.ignoreEphemeralNodes = ignoreEphemeralNodes;
         this.failed = failed;
         totalCounter.incrementAndGet();
     }
@@ -43,6 +45,7 @@ final class NodeReader implements Runnable {
             LOGGER.debug("Reading node " + path);
             byte[] data = zk.getData(path, false, stat);
             if (stat.getEphemeralOwner() != 0) {
+                if (ignoreEphemeralNodes) return;
                 znode.setEphemeral(true);
             }
             znode.setData(data);
@@ -55,7 +58,7 @@ final class NodeReader implements Runnable {
                 }
                 Node zchild = new Node(znode, child);
                 znode.appendChild(zchild);
-                pool.execute(new NodeReader(pool, zchild, totalCounter, processedCounter, failed));
+                pool.execute(new NodeReader(pool, zchild, totalCounter, processedCounter, failed, ignoreEphemeralNodes));
             }
         } catch (KeeperException | InterruptedException e) {
             LOGGER.error("Could not read from remote server", e);

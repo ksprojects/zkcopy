@@ -3,6 +3,8 @@ package com.github.ksprojects;
 import com.github.ksprojects.zkcopy.LoggingWatcher;
 import com.github.ksprojects.zkcopy.Node;
 import com.github.ksprojects.zkcopy.reader.Reader;
+import com.github.ksprojects.zkcopy.comparator.Comparator;
+import com.github.ksprojects.zkcopy.replicator.SyncReplicator;
 import com.github.ksprojects.zkcopy.writer.Writer;
 import java.util.concurrent.Callable;
 import org.apache.log4j.Logger;
@@ -62,6 +64,12 @@ public class ZkCopy implements Callable<Void> {
                         + "Batch sizes are limited by the jute.maxbuffer server-side config, usually around 1 MB.")
     int batchSize = DEFAULT_BATCH_SIZE;
 
+    @Option(names = { "--compare" }, description = "Compare source and target Zookeeper nodes")
+    boolean compare;
+
+    @Option(names = { "--syncMode" }, description = "Run in sync mode (event-driven replication)")
+    boolean syncMode;
+
     /**
      * Main entry point - start ZkCopy.
      */
@@ -71,11 +79,32 @@ public class ZkCopy implements Callable<Void> {
 
     @Override
     public Void call() throws Exception {
+        if (syncMode) {
+            LOGGER.info("Starting Sync Mode...");
+            SyncReplicator replicator = new SyncReplicator(source, target, sessionTimeout, workers, ignoreEphemeralNodes);
+            replicator.start();
+            return null;
+        }
+
+        if (compare) {
+            LOGGER.info("Starting Comparison Mode...");
+            Reader sourceReader = new Reader(source, workers, sessionTimeout, ignoreEphemeralNodes);
+            Node sourceRoot = sourceReader.read();
+            Reader targetReader = new Reader(target, workers, sessionTimeout, ignoreEphemeralNodes);
+            Node targetRoot = targetReader.read();
+            
+            Comparator comparator = new Comparator(sourceRoot, targetRoot);
+            if (!comparator.compare()) {
+                System.exit(1);
+            }
+            return null;
+        }
+
         boolean removeDeprecatedNodes = !copyOnly;
         LOGGER.info("using " + workers + " concurrent workers to copy data");
         LOGGER.info("delete nodes = " + String.valueOf(removeDeprecatedNodes));
         LOGGER.info("ignore ephemeral nodes = " + String.valueOf(ignoreEphemeralNodes));
-        Reader reader = new Reader(source, workers, sessionTimeout);
+        Reader reader = new Reader(source, workers, sessionTimeout, ignoreEphemeralNodes);
         Node root = reader.read();
         if (root != null) {
             ZooKeeper zookeeper = null;

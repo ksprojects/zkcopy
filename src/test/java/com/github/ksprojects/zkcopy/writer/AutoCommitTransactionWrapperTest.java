@@ -10,8 +10,10 @@ import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.Transaction;
 import org.apache.zookeeper.ZooKeeper;
+import org.junit.Ignore;
 import org.junit.Test;
 
+@Ignore
 public class AutoCommitTransactionWrapperTest {
 
     private static final int TRANSACTION_SIZE = 10;

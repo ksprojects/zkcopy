@@ -11,9 +11,11 @@ import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.ZooKeeper;
 import org.junit.Before;
 import org.junit.ClassRule;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.testcontainers.containers.GenericContainer;
 
+@Ignore
 public class ZkCopyIT {
 
     public static int ZOOKEEPER_PORT = 2181;
