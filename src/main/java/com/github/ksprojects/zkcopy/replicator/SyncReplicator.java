@@ -158,6 +158,10 @@ public class SyncReplicator {
                     Stat stat = new Stat();
                     byte[] data = local.getData(path, localWatcher, stat);
                     
+                    if (ignoreEphemeralNodes && stat.getEphemeralOwner() > 0) {
+                        return;
+                    }
+
                     try {
                         Stat remoteStat = new Stat();
                         byte[] remoteData = remote.getData(remoteNodePath, false, remoteStat);
@@ -218,6 +222,10 @@ public class SyncReplicator {
         Stat stat = new Stat();
         byte[] data = from.getData(fromPath, fromWatcher, stat);
         
+        if (ignoreEphemeralNodes && stat.getEphemeralOwner() > 0) {
+            return;
+        }
+        
         try {
             to.create(toPath, data, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
         } catch (KeeperException.NodeExistsException e) {
@@ -271,6 +279,9 @@ public class SyncReplicator {
     }
     
     private void subscribe(ZooKeeper zk, String path, Watcher watcher) throws KeeperException, InterruptedException {
+        if (ignoredPaths.contains(path)) {
+            return;
+        }
         try {
             zk.getData(path, watcher, null);
             List<String> children = zk.getChildren(path, watcher);
