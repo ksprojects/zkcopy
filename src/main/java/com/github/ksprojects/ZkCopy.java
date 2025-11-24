@@ -6,6 +6,10 @@ import com.github.ksprojects.zkcopy.reader.Reader;
 import com.github.ksprojects.zkcopy.comparator.Comparator;
 import com.github.ksprojects.zkcopy.replicator.SyncReplicator;
 import com.github.ksprojects.zkcopy.writer.Writer;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.ZooKeeper;
@@ -70,6 +74,9 @@ public class ZkCopy implements Callable<Void> {
     @Option(names = { "--syncMode" }, description = "Run in sync mode (event-driven replication)")
     boolean syncMode;
 
+    @Option(names = { "--ignoreNode" }, description = "List of paths to ignore")
+    List<String> ignoreNodes;
+
     /**
      * Main entry point - start ZkCopy.
      */
@@ -79,21 +86,23 @@ public class ZkCopy implements Callable<Void> {
 
     @Override
     public Void call() throws Exception {
+        Set<String> ignoredPaths = new HashSet<>(ignoreNodes != null ? ignoreNodes : new ArrayList<>());
+
         if (syncMode) {
             LOGGER.info("Starting Sync Mode...");
-            SyncReplicator replicator = new SyncReplicator(source, target, sessionTimeout, workers, ignoreEphemeralNodes);
+            SyncReplicator replicator = new SyncReplicator(source, target, sessionTimeout, workers, ignoreEphemeralNodes, ignoredPaths);
             replicator.start();
             return null;
         }
 
         if (compare) {
             LOGGER.info("Starting Comparison Mode...");
-            Reader sourceReader = new Reader(source, workers, sessionTimeout, ignoreEphemeralNodes);
+            Reader sourceReader = new Reader(source, workers, sessionTimeout, ignoreEphemeralNodes, ignoredPaths);
             Node sourceRoot = sourceReader.read();
-            Reader targetReader = new Reader(target, workers, sessionTimeout, ignoreEphemeralNodes);
+            Reader targetReader = new Reader(target, workers, sessionTimeout, ignoreEphemeralNodes, ignoredPaths);
             Node targetRoot = targetReader.read();
             
-            Comparator comparator = new Comparator(sourceRoot, targetRoot);
+            Comparator comparator = new Comparator(sourceRoot, targetRoot, ignoredPaths);
             if (!comparator.compare()) {
                 System.exit(1);
             }
@@ -104,14 +113,14 @@ public class ZkCopy implements Callable<Void> {
         LOGGER.info("using " + workers + " concurrent workers to copy data");
         LOGGER.info("delete nodes = " + String.valueOf(removeDeprecatedNodes));
         LOGGER.info("ignore ephemeral nodes = " + String.valueOf(ignoreEphemeralNodes));
-        Reader reader = new Reader(source, workers, sessionTimeout, ignoreEphemeralNodes);
+        Reader reader = new Reader(source, workers, sessionTimeout, ignoreEphemeralNodes, ignoredPaths);
         Node root = reader.read();
         if (root != null) {
             ZooKeeper zookeeper = null;
             try {
                 zookeeper = new ZooKeeper(zkHost(target), sessionTimeout, new LoggingWatcher());
                 Writer writer = new Writer(zookeeper, zkPath(target), root, removeDeprecatedNodes, ignoreEphemeralNodes,
-                        mtime, batchSize);
+                        mtime, batchSize, ignoredPaths);
                 writer.write();
             } finally {
                 if (zookeeper != null) {

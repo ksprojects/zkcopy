@@ -1,6 +1,7 @@
 package com.github.ksprojects.zkcopy.reader;
 
 import com.github.ksprojects.zkcopy.Node;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -17,6 +18,7 @@ public final class Reader {
     private static Logger logger = Logger.getLogger(Reader.class);
     private final int threadsNumber;
     private final boolean ignoreEphemeralNodes;
+    private final Set<String> ignoredPaths;
     private final String source;
     private String server;
     private String path;
@@ -29,11 +31,12 @@ public final class Reader {
      * @param threads number of concurrent thread for reading data
      * @param timeout the session timeout for read operations
      */
-    public Reader(String source, int threads, int timeout, boolean ignoreEphemeralNodes) {
+    public Reader(String source, int threads, int timeout, boolean ignoreEphemeralNodes, Set<String> ignoredPaths) {
         threadsNumber = threads;
         this.source = source;
         this.timeout = timeout;
         this.ignoreEphemeralNodes = ignoreEphemeralNodes;
+        this.ignoredPaths = ignoredPaths;
         parseSource();
     }
 
@@ -56,7 +59,7 @@ public final class Reader {
         AtomicInteger totalCounter = new AtomicInteger(0);
         AtomicInteger processedCounter = new AtomicInteger(0);
         AtomicBoolean failed = new AtomicBoolean(false);
-        pool.execute(new NodeReader(pool, znode, totalCounter, processedCounter, failed, ignoreEphemeralNodes));
+        pool.execute(new NodeReader(pool, znode, totalCounter, processedCounter, failed, ignoreEphemeralNodes, ignoredPaths));
         try {
             while (true) {
                 if (pool.awaitTermination(1, TimeUnit.SECONDS)) {

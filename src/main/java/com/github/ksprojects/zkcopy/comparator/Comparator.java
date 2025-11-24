@@ -6,15 +6,22 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.HashSet;
 
 public class Comparator {
     private static final Logger LOGGER = Logger.getLogger(Comparator.class);
     private final Node sourceRoot;
     private final Node targetRoot;
+    private final Set<String> ignoredPaths;
     
     public Comparator(Node sourceRoot, Node targetRoot) {
+        this(sourceRoot, targetRoot, new HashSet<>());
+    }
+
+    public Comparator(Node sourceRoot, Node targetRoot, Set<String> ignoredPaths) {
         this.sourceRoot = sourceRoot;
         this.targetRoot = targetRoot;
+        this.ignoredPaths = ignoredPaths;
     }
     
     public boolean compare() {
@@ -36,6 +43,9 @@ public class Comparator {
     private void compareNodes(Node source, Node target, List<String> errors) {
         if (source == null || target == null) return;
 
+        if (ignoredPaths.contains(source.getAbsolutePath())) return;
+        if (ignoredPaths.contains(target.getAbsolutePath())) return;
+
         if (!Arrays.equals(source.getData(), target.getData())) {
             errors.add("Data mismatch at " + source.getAbsolutePath() + " vs " + target.getAbsolutePath());
         }
@@ -45,12 +55,18 @@ public class Comparator {
 
         for (String childName : sourceChildrenNames) {
             if (!targetChildrenNames.contains(childName)) {
+                if (isIgnored(source.getAbsolutePath(), childName) || isIgnored(target.getAbsolutePath(), childName)) {
+                    continue;
+                }
                 errors.add("Node missing in target: " + source.getAbsolutePath() + "/" + childName);
             }
         }
 
         for (String childName : targetChildrenNames) {
             if (!sourceChildrenNames.contains(childName)) {
+                if (isIgnored(target.getAbsolutePath(), childName) || isIgnored(source.getAbsolutePath(), childName)) {
+                    continue;
+                }
                 errors.add("Node missing in source: " + target.getAbsolutePath() + "/" + childName);
             }
         }
@@ -63,6 +79,12 @@ public class Comparator {
             }
         }
     }
+
+    private boolean isIgnored(String parentPath, String childName) {
+        String path = parentPath.equals("/") ? "/" + childName : parentPath + "/" + childName;
+        return ignoredPaths.contains(path);
+    }
+
 
     private Node findChild(Node parent, String name) {
         for (Node child : parent.getChildren()) {

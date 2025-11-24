@@ -30,6 +30,7 @@ public class SyncReplicator {
     private final int sessionTimeout;
     private final boolean ignoreEphemeralNodes;
     private final int workers;
+    private final Set<String> ignoredPaths;
     
     private ZooKeeper sourceZk;
     private ZooKeeper targetZk;
@@ -40,12 +41,13 @@ public class SyncReplicator {
     private final Watcher sourceWatcher;
     private final Watcher targetWatcher;
     
-    public SyncReplicator(String sourceAddress, String targetAddress, int sessionTimeout, int workers, boolean ignoreEphemeralNodes) {
+    public SyncReplicator(String sourceAddress, String targetAddress, int sessionTimeout, int workers, boolean ignoreEphemeralNodes, Set<String> ignoredPaths) {
         this.sourceAddress = sourceAddress;
         this.targetAddress = targetAddress;
         this.sessionTimeout = sessionTimeout;
         this.workers = workers;
         this.ignoreEphemeralNodes = ignoreEphemeralNodes;
+        this.ignoredPaths = ignoredPaths;
         
         this.sourcePath = getPath(sourceAddress);
         this.targetPath = getPath(targetAddress);
@@ -105,10 +107,10 @@ public class SyncReplicator {
 
     private boolean runCompare() {
         LOGGER.info("Running comparison...");
-        Reader sourceReader = new Reader(sourceAddress, workers, sessionTimeout, ignoreEphemeralNodes);
+        Reader sourceReader = new Reader(sourceAddress, workers, sessionTimeout, ignoreEphemeralNodes, ignoredPaths);
         Node sourceRoot = sourceReader.read();
         
-        Reader targetReader = new Reader(targetAddress, workers, sessionTimeout, ignoreEphemeralNodes);
+        Reader targetReader = new Reader(targetAddress, workers, sessionTimeout, ignoreEphemeralNodes, ignoredPaths);
         Node targetRoot = targetReader.read();
         
         Comparator comparator = new Comparator(sourceRoot, targetRoot);
@@ -185,6 +187,9 @@ public class SyncReplicator {
                     for (String child : localSet) {
                         if (!remoteSet.contains(child)) {
                             String childPath = makeChildPath(path, child);
+                            if (ignoredPaths.contains(childPath)) {
+                                continue;
+                            }
                             String remoteChildPath = makeChildPath(remoteNodePath, child);
                             
                             LOGGER.info("Replicating creation of " + remoteChildPath);
@@ -222,6 +227,10 @@ public class SyncReplicator {
         
         List<String> children = from.getChildren(fromPath, fromWatcher);
         for (String child : children) {
+            String childFullPath = fromPath.equals("/") ? "/" + child : fromPath + "/" + child;
+            if (ignoredPaths.contains(childFullPath)) {
+                continue;
+            }
             copyNodeRecursive(from, to, fromPath + "/" + child, toPath + "/" + child, fromWatcher, toWatcher);
         }
     }

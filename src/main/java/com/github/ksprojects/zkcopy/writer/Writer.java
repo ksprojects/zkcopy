@@ -1,7 +1,9 @@
 package com.github.ksprojects.zkcopy.writer;
 
 import com.github.ksprojects.zkcopy.Node;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
@@ -27,6 +29,7 @@ public class Writer {
     private long maxMtime;
     private Transaction transaction;
     private int batchSize;
+    private final Set<String> ignoredPaths;
 
     /**
      * Create new {@link Writer} instance.
@@ -43,7 +46,7 @@ public class Writer {
      * @param mtime
      *            znodes modified before this timestamp will not be copied.
      */
-    public Writer(ZooKeeper zk, String destPath, Node znode, boolean removeDeprecatedNodes, boolean ignoreEphemeralNodes, long mtime, int batchSize) {
+    public Writer(ZooKeeper zk, String destPath, Node znode, boolean removeDeprecatedNodes, boolean ignoreEphemeralNodes, long mtime, int batchSize, Set<String> ignoredPaths) {
         this.zk = zk;
         this.destPath = destPath;
         this.sourceRoot = znode;
@@ -51,6 +54,11 @@ public class Writer {
         this.ignoreEphemeralNodes = ignoreEphemeralNodes;
         this.mtime = mtime;
         this.batchSize = batchSize;
+        this.ignoredPaths = ignoredPaths != null ? ignoredPaths : Collections.emptySet();
+    }
+    
+    public Writer(ZooKeeper zk, String destPath, Node znode, boolean removeDeprecatedNodes, boolean ignoreEphemeralNodes, long mtime, int batchSize) {
+        this(zk, destPath, znode, removeDeprecatedNodes, ignoreEphemeralNodes, mtime, batchSize, Collections.emptySet());
     }
     
     /**
@@ -114,11 +122,18 @@ public class Writer {
                         if ("zookeeper".equals(child)) {
                             continue;
                         }
+                        String childPath;
                         if ("/".equals(node.getAbsolutePath())) {
-                            delete("/" + child);
+                            childPath = "/" + child;
                         } else {
-                            delete(node.getAbsolutePath() + "/" + child);
+                            childPath = node.getAbsolutePath() + "/" + child;
                         }
+                        
+                        if (ignoredPaths.contains(childPath)) {
+                            continue;
+                        }
+                        
+                        delete(childPath);
                     }
                 }
             } catch (KeeperException e) {

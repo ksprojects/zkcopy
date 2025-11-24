@@ -2,6 +2,7 @@ package com.github.ksprojects.zkcopy.reader;
 
 import com.github.ksprojects.zkcopy.Node;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -19,15 +20,17 @@ final class NodeReader implements Runnable {
     private final AtomicInteger totalCounter;
     private final AtomicInteger processedCounter;
     private final boolean ignoreEphemeralNodes;
+    private final Set<String> ignoredPaths;
 
     private final AtomicBoolean failed;
 
-    NodeReader(ExecutorService pool, Node znode, AtomicInteger totalCounter, AtomicInteger processedCounter, AtomicBoolean failed, boolean ignoreEphemeralNodes) {
+    NodeReader(ExecutorService pool, Node znode, AtomicInteger totalCounter, AtomicInteger processedCounter, AtomicBoolean failed, boolean ignoreEphemeralNodes, Set<String> ignoredPaths) {
         this.znode = znode;
         this.pool = pool;
         this.totalCounter = totalCounter;
         this.processedCounter = processedCounter;
         this.ignoreEphemeralNodes = ignoreEphemeralNodes;
+        this.ignoredPaths = ignoredPaths;
         this.failed = failed;
         totalCounter.incrementAndGet();
     }
@@ -45,8 +48,14 @@ final class NodeReader implements Runnable {
             LOGGER.debug("Reading node " + path);
             byte[] data = zk.getData(path, false, stat);
             if (stat.getEphemeralOwner() != 0) {
-                if (ignoreEphemeralNodes) return;
                 znode.setEphemeral(true);
+                if (ignoreEphemeralNodes) {
+                    LOGGER.debug("Ignoring ephemeral node " + znode.getAbsolutePath());
+                    if (znode.getParent() != null) {
+                        znode.getParent().removeChild(znode);
+                    }
+                    return;
+                }
             }
             znode.setData(data);
             znode.setMtime(stat.getMtime());
@@ -57,8 +66,11 @@ final class NodeReader implements Runnable {
                     continue;
                 }
                 Node zchild = new Node(znode, child);
+                if (ignoredPaths.contains(zchild.getAbsolutePath())) {
+                    continue;
+                }
                 znode.appendChild(zchild);
-                pool.execute(new NodeReader(pool, zchild, totalCounter, processedCounter, failed, ignoreEphemeralNodes));
+                pool.execute(new NodeReader(pool, zchild, totalCounter, processedCounter, failed, ignoreEphemeralNodes, ignoredPaths));
             }
         } catch (KeeperException | InterruptedException e) {
             LOGGER.error("Could not read from remote server", e);

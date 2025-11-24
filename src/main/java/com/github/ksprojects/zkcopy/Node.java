@@ -1,14 +1,15 @@
 package com.github.ksprojects.zkcopy;
 
+import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class Node {
-    private final List<Node> children;
-    private final Set<String> childrenNames;
-    private Node parent;
+    private final Map<String, Node> children;
+    private final Node parent;
     private String path;
     private byte[] data;
     private boolean isEphemeral;
@@ -18,8 +19,7 @@ public class Node {
      * Create new root node instance for a given path.
      */
     public Node(String path) {
-        children = new LinkedList<Node>();
-        childrenNames = new HashSet<String>();
+        children = new ConcurrentHashMap<>();
         parent = null;
         this.path = path;
         data = null;
@@ -30,8 +30,7 @@ public class Node {
      * Create new child node.
      */
     public Node(Node parent, String path) {
-        children = new LinkedList<Node>();
-        childrenNames = new HashSet<String>();
+        children = new ConcurrentHashMap<>();
         this.parent = parent;
         this.path = path;
         data = null;
@@ -42,16 +41,19 @@ public class Node {
     }
 
     public void appendChild(Node child) {
-        children.add(child);
-        childrenNames.add(child.getPath());
+        children.put(child.getPath(), child);
+    }
+
+    public void removeChild(Node child) {
+        children.remove(child.getPath());
     }
 
     public List<Node> getChildren() {
-        return children;
+        return new ArrayList<>(children.values());
     }
 
     public Set<String> getChildrenNamed() {
-        return childrenNames;
+        return new HashSet<>(children.keySet());
     }
 
     /**
