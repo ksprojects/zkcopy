@@ -21,7 +21,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class SyncReplicator {
-    private static final Logger LOGGER = Logger.getLogger(SyncReplicator.class);
+    private static final Logger log = Logger.getLogger(SyncReplicator.class);
     
     private final String sourceAddress;
     private final String targetAddress;
@@ -64,11 +64,11 @@ public class SyncReplicator {
             connect();
             
             if (!runCompare()) {
-                 LOGGER.error("Initial comparison failed. Aborting sync mode.");
+                 log.error("Initial comparison failed. Aborting sync mode.");
                  System.exit(1);
             }
             
-            LOGGER.info("Initial comparison successful. Starting event listeners...");
+            log.info("Initial comparison successful. Starting event listeners...");
             subscribe(sourceZk, sourcePath, sourceWatcher);
             subscribe(targetZk, targetPath, targetWatcher);
             
@@ -78,7 +78,7 @@ public class SyncReplicator {
                 }
             }
         } catch (Exception e) {
-            LOGGER.error("Error in SyncReplicator", e);
+            log.error("Error in SyncReplicator", e);
             System.exit(1);
         }
     }
@@ -100,13 +100,13 @@ public class SyncReplicator {
              }
         });
         
-        LOGGER.info("Connecting to Zookeeper instances...");
+        log.info("Connecting to Zookeeper instances...");
         latch.await();
-        LOGGER.info("Connected.");
+        log.info("Connected.");
     }
 
     private boolean runCompare() {
-        LOGGER.info("Running comparison...");
+        log.info("Running comparison...");
         Reader sourceReader = new Reader(sourceAddress, workers, sessionTimeout, ignoreEphemeralNodes, ignoredPaths);
         Node sourceRoot = sourceReader.read();
         
@@ -119,7 +119,7 @@ public class SyncReplicator {
     
     private void processEvent(WatchedEvent event, boolean isSource) {
         if (paused.get()) {
-            LOGGER.warn("Ignoring event because replication is paused: " + event);
+            log.warn("Ignoring event because replication is paused: " + event);
             return;
         }
         
@@ -131,7 +131,7 @@ public class SyncReplicator {
         String path = event.getPath();
         if (path == null) return;
         
-        LOGGER.debug("Processing event " + event.getType() + " on " + path + " (Source=" + isSource + ")");
+        log.debug("Processing event " + event.getType() + " on " + path + " (Source=" + isSource + ")");
 
         final ZooKeeper local = isSource ? sourceZk : targetZk;
         final ZooKeeper remote = isSource ? targetZk : sourceZk;
@@ -166,11 +166,11 @@ public class SyncReplicator {
                         Stat remoteStat = new Stat();
                         byte[] remoteData = remote.getData(remoteNodePath, false, remoteStat);
                         if (!Arrays.equals(data, remoteData)) {
-                             LOGGER.info("Replicating data change to " + remoteNodePath);
+                             log.info("Replicating data change to " + remoteNodePath);
                              remote.setData(remoteNodePath, data, -1);
                         }
                     } catch (KeeperException.NoNodeException e) {
-                        LOGGER.info("Remote node missing, creating: " + remoteNodePath);
+                        log.info("Remote node missing, creating: " + remoteNodePath);
                         remote.create(remoteNodePath, data, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
                         subscribe(remote, remoteNodePath, remoteWatcher); 
                     }
@@ -195,8 +195,7 @@ public class SyncReplicator {
                                 continue;
                             }
                             String remoteChildPath = makeChildPath(remoteNodePath, child);
-                            
-                            LOGGER.info("Replicating creation of " + remoteChildPath);
+
                             copyNodeRecursive(local, remote, childPath, remoteChildPath, localWatcher, remoteWatcher);
                         }
                     }
@@ -204,7 +203,7 @@ public class SyncReplicator {
                     for (String child : remoteSet) {
                         if (!localSet.contains(child)) {
                              String remoteChildPath = makeChildPath(remoteNodePath, child);
-                             LOGGER.info("Replicating deletion of " + remoteChildPath);
+                             log.info("Replicating deletion of " + remoteChildPath);
                              deleteRecursive(remote, remoteChildPath);
                         }
                     }
@@ -214,17 +213,21 @@ public class SyncReplicator {
                     break;
             }
         } catch (Exception e) {
-            LOGGER.error("Error syncing change", e);
+            log.error("Error syncing change", e);
         }
     }
     
     private void copyNodeRecursive(ZooKeeper from, ZooKeeper to, String fromPath, String toPath, Watcher fromWatcher, Watcher toWatcher) throws KeeperException, InterruptedException {
+        if (ignoreEphemeralNodes) {
+            Stat stat = from.exists(fromPath, false);
+            if (stat != null && stat.getEphemeralOwner() > 0) {
+                return;
+            }
+        }
+        log.info("Replicating creation of " + toPath);
+
         Stat stat = new Stat();
         byte[] data = from.getData(fromPath, fromWatcher, stat);
-        
-        if (ignoreEphemeralNodes && stat.getEphemeralOwner() > 0) {
-            return;
-        }
         
         try {
             to.create(toPath, data, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
@@ -256,22 +259,22 @@ public class SyncReplicator {
     
     private void handleConnectionState(Watcher.Event.KeeperState state, boolean isSource) {
         if (state == Watcher.Event.KeeperState.Disconnected || state == Watcher.Event.KeeperState.Expired) {
-            LOGGER.warn((isSource ? "Source" : "Target") + " disconnected. Pausing...");
+            log.warn((isSource ? "Source" : "Target") + " disconnected. Pausing...");
             paused.set(true);
         } else if (state == Watcher.Event.KeeperState.SyncConnected) {
             if (paused.get()) {
-                LOGGER.info("Connection restored. Running comparison...");
+                log.info("Connection restored. Running comparison...");
                 if (runCompare()) {
-                    LOGGER.info("Comparison OK. Resuming.");
+                    log.info("Comparison OK. Resuming.");
                     paused.set(false);
                     try {
                          subscribe(sourceZk, sourcePath, sourceWatcher);
                          subscribe(targetZk, targetPath, targetWatcher);
                     } catch (Exception e) {
-                        LOGGER.error("Resubscribe failed", e);
+                        log.error("Resubscribe failed", e);
                     }
                 } else {
-                    LOGGER.error("Comparison failed after recovery. Exiting.");
+                    log.error("Comparison failed after recovery. Exiting.");
                     System.exit(1);
                 }
             }
