@@ -2,7 +2,10 @@ package com.github.ksprojects.zkcopy.replicator;
 
 import com.github.ksprojects.zkcopy.Node;
 import com.github.ksprojects.zkcopy.comparator.Comparator;
+import com.github.ksprojects.zkcopy.metric.SyncReplicatorMetricsManager;
 import com.github.ksprojects.zkcopy.reader.Reader;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.prometheus.PrometheusMeterRegistry;
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
@@ -19,6 +22,7 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class SyncReplicator {
     private static final Logger log = Logger.getLogger(SyncReplicator.class);
@@ -40,8 +44,14 @@ public class SyncReplicator {
     
     private final Watcher sourceWatcher;
     private final Watcher targetWatcher;
-    
-    public SyncReplicator(String sourceAddress, String targetAddress, int sessionTimeout, int workers, boolean ignoreEphemeralNodes, Set<String> ignoredPaths) {
+
+    private final SyncReplicatorMetricsManager metricsManager;
+    private final AtomicLong connectedAt;
+
+    public SyncReplicator(
+        String sourceAddress, String targetAddress, int sessionTimeout, int workers,
+        boolean ignoreEphemeralNodes, Set<String> ignoredPaths, SyncReplicatorMetricsManager metricsManager
+    ) {
         this.sourceAddress = sourceAddress;
         this.targetAddress = targetAddress;
         this.sessionTimeout = sessionTimeout;
@@ -51,7 +61,9 @@ public class SyncReplicator {
         
         this.sourcePath = getPath(sourceAddress);
         this.targetPath = getPath(targetAddress);
-        
+        this.metricsManager = metricsManager;
+        this.connectedAt = new AtomicLong();
+
         this.sourceWatcher = event -> processEvent(event, true);
         this.targetWatcher = event -> processEvent(event, false);
     }
@@ -61,6 +73,7 @@ public class SyncReplicator {
     
     public void start() {
         try {
+            initConnectionGauge();
             connect();
             
             if (!runCompare()) {
@@ -105,6 +118,14 @@ public class SyncReplicator {
         log.info("Connected.");
     }
 
+    private void initConnectionGauge(){
+        metricsManager.initConnectionGauge(connectedAt, paused);
+        metricsManager.initUpTimeGauge();
+        metricsManager.initMaxMemoryGauge();
+        metricsManager.initFreeMemoryGauge();
+        metricsManager.initUsedMemoryGauge();
+    }
+
     private boolean runCompare() {
         log.info("Running comparison...");
         Reader sourceReader = new Reader(sourceAddress, workers, sessionTimeout, ignoreEphemeralNodes, ignoredPaths);
@@ -116,7 +137,7 @@ public class SyncReplicator {
         Comparator comparator = new Comparator(sourceRoot, targetRoot);
         return comparator.compare();
     }
-    
+
     private void processEvent(WatchedEvent event, boolean isSource) {
         if (paused.get()) {
             log.warn("Ignoring event because replication is paused: " + event);
@@ -133,6 +154,7 @@ public class SyncReplicator {
         
         log.debug("Processing event " + event.getType() + " on " + path + " (Source=" + isSource + ")");
 
+        final String localZkAddress = isSource ? sourceAddress : targetAddress;
         final ZooKeeper local = isSource ? sourceZk : targetZk;
         final ZooKeeper remote = isSource ? targetZk : sourceZk;
         final String localRoot = isSource ? sourcePath : targetPath;
@@ -148,6 +170,7 @@ public class SyncReplicator {
         } else {
             return; 
         }
+        final String serviceNodeName = extractParentNodeName(relativePath); // For metrics
         
         String remoteNodePath = remoteRoot + relativePath;
         if (remoteNodePath.startsWith("//")) remoteNodePath = remoteNodePath.substring(1);
@@ -166,8 +189,9 @@ public class SyncReplicator {
                         Stat remoteStat = new Stat();
                         byte[] remoteData = remote.getData(remoteNodePath, false, remoteStat);
                         if (!Arrays.equals(data, remoteData)) {
-                             log.info("Replicating data change to " + remoteNodePath);
+                             log.info(String.format("[%s] Replicating data change to %s. Value: %s", localZkAddress, remoteNodePath, getDataFromBytes(data)));
                              remote.setData(remoteNodePath, data, -1);
+                             metricsManager.countDataChanged(isSource, serviceNodeName);
                         }
                     } catch (KeeperException.NoNodeException e) {
                         log.info("Remote node missing, creating: " + remoteNodePath);
@@ -196,15 +220,14 @@ public class SyncReplicator {
                             }
                             String remoteChildPath = makeChildPath(remoteNodePath, child);
 
-                            copyNodeRecursive(local, remote, childPath, remoteChildPath, localWatcher, remoteWatcher);
+                            copyNodeRecursive(local, remote, childPath, remoteChildPath, localWatcher, remoteWatcher, isSource, localZkAddress, serviceNodeName);
                         }
                     }
 
                     for (String child : remoteSet) {
                         if (!localSet.contains(child)) {
                              String remoteChildPath = makeChildPath(remoteNodePath, child);
-                             log.info("Replicating deletion of " + remoteChildPath);
-                             deleteRecursive(remote, remoteChildPath);
+                             deleteRecursive(remote, remoteChildPath, isSource, localZkAddress, serviceNodeName);
                         }
                     }
                     break;
@@ -216,23 +239,33 @@ public class SyncReplicator {
             log.error("Error syncing change", e);
         }
     }
-    
-    private void copyNodeRecursive(ZooKeeper from, ZooKeeper to, String fromPath, String toPath, Watcher fromWatcher, Watcher toWatcher) throws KeeperException, InterruptedException {
+
+    private String extractParentNodeName(String relativePath){
+        if (relativePath.isEmpty()) return relativePath;
+        int ind = relativePath.substring(1).indexOf('/');
+        ind = ind == -1 ? relativePath.length() : ind + 1;
+        return relativePath.substring(1, ind);
+    }
+
+    private void copyNodeRecursive(ZooKeeper from, ZooKeeper to, String fromPath, String toPath, Watcher fromWatcher, Watcher toWatcher, boolean isSource, String localZkAddress, String serviceNodeName) throws KeeperException, InterruptedException {
         if (ignoreEphemeralNodes) {
             Stat stat = from.exists(fromPath, false);
             if (stat != null && stat.getEphemeralOwner() > 0) {
                 return;
             }
         }
-        log.info("Replicating creation of " + toPath);
 
         Stat stat = new Stat();
         byte[] data = from.getData(fromPath, fromWatcher, stat);
+
+        log.info(String.format("[%s] Replicating creation of %s. Value: %s", localZkAddress, fromPath, getDataFromBytes(data)));
         
         try {
             to.create(toPath, data, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+            metricsManager.countCreation(isSource, serviceNodeName);
         } catch (KeeperException.NodeExistsException e) {
             to.setData(toPath, data, -1);
+            metricsManager.countDataChanged(isSource, serviceNodeName);
         }
         subscribe(to, toPath, toWatcher);
         
@@ -242,18 +275,27 @@ public class SyncReplicator {
             if (ignoredPaths.contains(childFullPath)) {
                 continue;
             }
-            copyNodeRecursive(from, to, fromPath + "/" + child, toPath + "/" + child, fromWatcher, toWatcher);
+            copyNodeRecursive(from, to, fromPath + "/" + child, toPath + "/" + child, fromWatcher, toWatcher, isSource, localZkAddress, serviceNodeName);
         }
     }
     
-    private void deleteRecursive(ZooKeeper zk, String path) throws KeeperException, InterruptedException {
+    private void deleteRecursive(ZooKeeper zk, String path, boolean isSource, String localZkAddress, String serviceNodeName) throws KeeperException, InterruptedException {
+        if (ignoreEphemeralNodes) {
+            Stat stat = zk.exists(path, false);
+            if (stat != null && stat.getEphemeralOwner() > 0) {
+                return;
+            }
+        }
+        log.info(String.format("[%s] Replicating deletion of %s", localZkAddress, path));
+
         try {
             List<String> children = zk.getChildren(path, false);
             for (String child : children) {
-                deleteRecursive(zk, path + "/" + child);
+                deleteRecursive(zk, path + "/" + child, isSource, localZkAddress, serviceNodeName);
             }
             zk.delete(path, -1);
-        } catch (KeeperException.NoNodeException e) {
+            metricsManager.countDeletion(isSource, serviceNodeName);
+        } catch (KeeperException.NoNodeException ignore) {
         }
     }
     
@@ -262,6 +304,7 @@ public class SyncReplicator {
             log.warn((isSource ? "Source" : "Target") + " disconnected. Pausing...");
             paused.set(true);
         } else if (state == Watcher.Event.KeeperState.SyncConnected) {
+            connectedAt.set(System.currentTimeMillis());
             if (paused.get()) {
                 log.info("Connection restored. Running comparison...");
                 if (runCompare()) {
@@ -298,6 +341,10 @@ public class SyncReplicator {
 
     private String makeChildPath(String path, String child){
         return path.equals("/") ? "/" + child : path + "/" + child;
+    }
+
+    private String getDataFromBytes(byte[] bytes){
+        return bytes == null ? "<null>" : new String(bytes);
     }
 }
 

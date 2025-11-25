@@ -1,4 +1,4 @@
-FROM maven:3.3.9-jdk-8
+FROM maven:3.8-jdk-11
 
 MAINTAINER Kostiantyn Shchepanovskyi <schepanovsky@gmail.com>
 

@@ -2,6 +2,9 @@ package com.github.ksprojects;
 
 import com.github.ksprojects.zkcopy.LoggingWatcher;
 import com.github.ksprojects.zkcopy.Node;
+import com.github.ksprojects.zkcopy.metric.MetricsPusher;
+import com.github.ksprojects.zkcopy.metric.SyncReplicatorMetricsManager;
+import com.github.ksprojects.zkcopy.metric.VictoriaMetricsClient;
 import com.github.ksprojects.zkcopy.reader.Reader;
 import com.github.ksprojects.zkcopy.comparator.Comparator;
 import com.github.ksprojects.zkcopy.replicator.SyncReplicator;
@@ -11,6 +14,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import io.micrometer.prometheus.PrometheusConfig;
+import io.micrometer.prometheus.PrometheusMeterRegistry;
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.ZooKeeper;
 import picocli.CommandLine;
@@ -25,6 +30,8 @@ public class ZkCopy implements Callable<Void> {
     private static final boolean DEFAULT_COPY_ONLY = false;
     private static final boolean DEFAULT_IGNORE_EPHEMERAL_NODES = true;
     private static final int DEFAULT_BATCH_SIZE = 1000;
+    private static final int DEFAULT_METRICS_PUSHING_RATE = 15;
+    private static final String DEFAULT_METRICS_URL = "http://dzen-vmselect.mon.one-infra.ru/api/v1/import/prometheus";
 
     @Option(names = "--help", usageHelp = true, description = "display this help and exit")
     boolean help;
@@ -77,6 +84,15 @@ public class ZkCopy implements Callable<Void> {
     @Option(names = { "--ignoreNode" }, description = "List of paths to ignore")
     List<String> ignoreNodes;
 
+    @Option(names = { "--withMetrics" }, description = "Enable metrics pushing")
+    boolean withMetrics;
+
+    @Option(names = { "--metricsPushRate" }, description = "Configures metrics pushing rate(in seconds)")
+    int metricsPushingRate = DEFAULT_METRICS_PUSHING_RATE;
+
+    @Option(names = { "--metricsUrl" }, description = "The url to which the metrics should be sent")
+    String metricsUrl = DEFAULT_METRICS_URL;
+
     /**
      * Main entry point - start ZkCopy.
      */
@@ -86,11 +102,20 @@ public class ZkCopy implements Callable<Void> {
 
     @Override
     public Void call() throws Exception {
+        VictoriaMetricsClient vmClient = new VictoriaMetricsClient(metricsUrl, 5000);
+        PrometheusMeterRegistry registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
         Set<String> ignoredPaths = new HashSet<>(ignoreNodes != null ? ignoreNodes : new ArrayList<>());
+
+        if (withMetrics){
+            LOGGER.info("Starting metrics pusher...");
+            var pusher = new MetricsPusher(vmClient, registry, metricsPushingRate);
+            pusher.start();
+        }
 
         if (syncMode) {
             LOGGER.info("Starting Sync Mode...");
-            SyncReplicator replicator = new SyncReplicator(source, target, sessionTimeout, workers, ignoreEphemeralNodes, ignoredPaths);
+            var metricsManager = new SyncReplicatorMetricsManager(registry);
+            SyncReplicator replicator = new SyncReplicator(source, target, sessionTimeout, workers, ignoreEphemeralNodes, ignoredPaths, metricsManager);
             replicator.start();
             return null;
         }
