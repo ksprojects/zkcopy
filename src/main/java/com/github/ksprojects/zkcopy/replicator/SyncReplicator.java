@@ -73,9 +73,9 @@ public class SyncReplicator {
     
     public void start() {
         try {
-            initConnectionGauge();
             connect();
-            
+            initConnectionGauge();
+
             if (!runCompare()) {
                  log.error("Initial comparison failed. Aborting sync mode.");
                  System.exit(1);
