@@ -15,7 +15,7 @@ public class SyncReplicatorMetricsManager {
     public static final String ZK_FREE_MEM_GAUGE_METRIC = "ucp_zk_replication_memory_free";
     public static final String ZK_USED_MEM_GAUGE_METRIC = "ucp_zk_replication_memory_used";
     public static final String ZK_MAX_MEM_GAUGE_METRIC = "ucp_zk_replication_memory_max";
-    public static final String CURRENT_CTYPE = "test";
+    public static final String CURRENT_CTYPE = "prod";
 
     private final PrometheusMeterRegistry registry;
 

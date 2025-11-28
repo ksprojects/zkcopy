@@ -1,0 +1,1 @@
+java -jar zkcopy.jar --source 2a00:b4c0:1c1::1241:0:2181/ichwill-zen/production --target fd00:b4c4:c110:101:1:0:1859:0:2181/ichwill-zen/production -w 40 --syncMode --withMetrics --metricsUrl http://vmagent.mon.one-infra.ru/api/v1/import/prometheus > zksync.log &

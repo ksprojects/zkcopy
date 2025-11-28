@@ -170,11 +170,12 @@ public class SyncReplicator {
         } else {
             return; 
         }
-        final String serviceNodeName = extractParentNodeName(relativePath); // For metrics
+        final String serviceNodeName = extractParentNodeName(relativePath);
         
-        String remoteNodePath = remoteRoot + relativePath;
-        if (remoteNodePath.startsWith("//")) remoteNodePath = remoteNodePath.substring(1);
-        
+        String remoteNodePathRaw = remoteRoot + relativePath;
+        if (remoteNodePathRaw.startsWith("//")) remoteNodePathRaw = remoteNodePathRaw.substring(1);
+        String remoteNodePath = remoteNodePathRaw;
+
         try {
             switch (event.getType()) {
                 case NodeDataChanged:
@@ -201,35 +202,13 @@ public class SyncReplicator {
                     break;
                     
                 case NodeChildrenChanged:
-                    List<String> children = local.getChildren(path, localWatcher);
-                    List<String> remoteChildren;
-                    try {
-                        remoteChildren = remote.getChildren(remoteNodePath, false);
-                    } catch (KeeperException.NoNodeException e) {
-                         return;
-                    }
-                    
-                    Set<String> localSet = new HashSet<>(children);
-                    Set<String> remoteSet = new HashSet<>(remoteChildren);
-                    
-                    for (String child : localSet) {
-                        if (!remoteSet.contains(child)) {
-                            String childPath = makeChildPath(path, child);
-                            if (ignoredPaths.contains(childPath)) {
-                                continue;
-                            }
-                            String remoteChildPath = makeChildPath(remoteNodePath, child);
-
-                            copyNodeRecursive(local, remote, childPath, remoteChildPath, localWatcher, remoteWatcher, isSource, localZkAddress, serviceNodeName);
+                    local.sync(path, (rc, path1, ctx) -> {
+                        if (rc == KeeperException.Code.OK.intValue()) {
+                            handleNodeChildrenChanged(local, remote, path, remoteNodePath, localWatcher, remoteWatcher, isSource, localZkAddress, serviceNodeName);
+                        } else {
+                            log.error("Sync failed for path " + path + ": " + KeeperException.Code.get(rc));
                         }
-                    }
-
-                    for (String child : remoteSet) {
-                        if (!localSet.contains(child)) {
-                             String remoteChildPath = makeChildPath(remoteNodePath, child);
-                             deleteRecursive(remote, remoteChildPath, isSource, localZkAddress, serviceNodeName);
-                        }
-                    }
+                    }, null);
                     break;
                 case NodeDeleted:
                     local.exists(path, localWatcher);
@@ -328,6 +307,12 @@ public class SyncReplicator {
         if (ignoredPaths.contains(path)) {
             return;
         }
+        if (ignoreEphemeralNodes) {
+            Stat stat = zk.exists(path, false);
+            if (stat != null && stat.getEphemeralOwner() > 0) {
+                return;
+            }
+        }
         try {
             zk.getData(path, watcher, null);
             List<String> children = zk.getChildren(path, watcher);
@@ -345,6 +330,42 @@ public class SyncReplicator {
 
     private String getDataFromBytes(byte[] bytes){
         return bytes == null ? "<null>" : new String(bytes);
+    }
+
+    private void handleNodeChildrenChanged(ZooKeeper local, ZooKeeper remote, String path, String remoteNodePath, Watcher localWatcher, Watcher remoteWatcher, boolean isSource, String localZkAddress, String serviceNodeName) {
+        try {
+            List<String> children = local.getChildren(path, localWatcher);
+            List<String> remoteChildren;
+            try {
+                remoteChildren = remote.getChildren(remoteNodePath, false);
+            } catch (KeeperException.NoNodeException e) {
+                return;
+            }
+
+            Set<String> localSet = new HashSet<>(children);
+            Set<String> remoteSet = new HashSet<>(remoteChildren);
+
+            for (String child : localSet) {
+                if (!remoteSet.contains(child)) {
+                    String childPath = makeChildPath(path, child);
+                    if (ignoredPaths.contains(childPath)) {
+                        continue;
+                    }
+                    String remoteChildPath = makeChildPath(remoteNodePath, child);
+
+                    copyNodeRecursive(local, remote, childPath, remoteChildPath, localWatcher, remoteWatcher, isSource, localZkAddress, serviceNodeName);
+                }
+            }
+
+            for (String child : remoteSet) {
+                if (!localSet.contains(child)) {
+                    String remoteChildPath = makeChildPath(remoteNodePath, child);
+                    deleteRecursive(remote, remoteChildPath, isSource, localZkAddress, serviceNodeName);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error syncing children change", e);
+        }
     }
 }
 

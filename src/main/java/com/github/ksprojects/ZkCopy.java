@@ -60,7 +60,6 @@ public class ZkCopy implements Callable<Void> {
     @Option(names = { "-i", "--ignoreEphemeralNodes" },
             description = "set this flag to false if you do not want to copy ephemeral ZNodes",
             arity = "0..1")
-   
     boolean ignoreEphemeralNodes = DEFAULT_IGNORE_EPHEMERAL_NODES;
 
     @Option(names = { "-m", "--mtime" },
