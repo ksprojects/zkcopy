@@ -23,8 +23,13 @@ public class MetricsPusher {
     public void start() {
         Executors.newScheduledThreadPool(1)
             .scheduleAtFixedRate(() -> {
-                log.debug("Pushing metrics...");
-                vmClient.pushMetrics(registry);
+                try {
+                    log.debug("Pushing metrics...");
+                    vmClient.pushMetrics(registry);
+                } catch (Exception ex){
+                    log.error("Error while pushing metrics...");
+                    log.error(ex.getMessage(), ex);
+                }
             }, pushingRate, pushingRate, TimeUnit.SECONDS);
     }
 }
