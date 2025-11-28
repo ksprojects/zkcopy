@@ -32,6 +32,8 @@ public class ZkCopy implements Callable<Void> {
     private static final int DEFAULT_BATCH_SIZE = 1000;
     private static final int DEFAULT_METRICS_PUSHING_RATE = 15;
     private static final String DEFAULT_METRICS_URL = "http://dzen-vmselect.mon.one-infra.ru/api/v1/import/prometheus";
+    private static final String DEFAULT_CLOUD_NAME = "";
+    private static final String DEFAULT_CTYPE = "test";
 
     @Option(names = "--help", usageHelp = true, description = "display this help and exit")
     boolean help;
@@ -92,6 +94,12 @@ public class ZkCopy implements Callable<Void> {
     @Option(names = { "--metricsUrl" }, description = "The url to which the metrics should be sent")
     String metricsUrl = DEFAULT_METRICS_URL;
 
+    @Option(names = { "--cloud" }, description = "The cloud where instance is hosted")
+    String cloud = DEFAULT_CLOUD_NAME;
+
+    @Option(names = { "--ctype" })
+    String ctype = DEFAULT_CTYPE;
+
     /**
      * Main entry point - start ZkCopy.
      */
@@ -113,7 +121,7 @@ public class ZkCopy implements Callable<Void> {
 
         if (syncMode) {
             LOGGER.info("Starting Sync Mode...");
-            var metricsManager = new SyncReplicatorMetricsManager(registry);
+            var metricsManager = new SyncReplicatorMetricsManager(registry, ctype, cloud);
             SyncReplicator replicator = new SyncReplicator(source, target, sessionTimeout, workers, ignoreEphemeralNodes, ignoredPaths, metricsManager);
             replicator.start();
             return null;

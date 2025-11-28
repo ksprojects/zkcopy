@@ -4,8 +4,6 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.prometheus.PrometheusMeterRegistry;
 
-import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -17,29 +15,23 @@ public class SyncReplicatorMetricsManager {
     public static final String ZK_FREE_MEM_GAUGE_METRIC = "ucp_zk_replication_memory_free";
     public static final String ZK_USED_MEM_GAUGE_METRIC = "ucp_zk_replication_memory_used";
     public static final String ZK_MAX_MEM_GAUGE_METRIC = "ucp_zk_replication_memory_max";
-    public static final String CURRENT_CTYPE = "test";
-    public static final String HOST_NAME;
-
-    static {
-        try {
-            HOST_NAME = InetAddress.getLocalHost().getHostName();
-        } catch (UnknownHostException e) {
-            throw new RuntimeException(e);
-        }
-    }
 
     private final PrometheusMeterRegistry registry;
+    public final String ctype;
+    public final String cloud;
 
-    public SyncReplicatorMetricsManager(PrometheusMeterRegistry prometheusMeterRegistry) {
+    public SyncReplicatorMetricsManager(PrometheusMeterRegistry prometheusMeterRegistry, String ctype, String cloud) {
         this.registry = prometheusMeterRegistry;
+        this.ctype = ctype;
+        this.cloud = cloud;
     }
 
     public void countCreation(boolean isSource, String serviceNode){
         Counter counter = Counter.builder(ZK_REPLICATION_METRIC)
             .tag("from", isSource ? "source" : "target")
             .tag("type", "creation")
-            .tag("ctype", CURRENT_CTYPE)
-            .tag("instance",HOST_NAME)
+            .tag("ctype", ctype)
+            .tag("cloud", cloud)
             .tag("serviceNode", serviceNode)
             .register(registry);
 
@@ -50,8 +42,8 @@ public class SyncReplicatorMetricsManager {
         Counter counter = Counter.builder(ZK_REPLICATION_METRIC)
             .tag("from", isSource ? "source" : "target")
             .tag("type", "dataChanged")
-            .tag("ctype", CURRENT_CTYPE)
-            .tag("instance",HOST_NAME)
+            .tag("ctype", ctype)
+            .tag("cloud", cloud)
             .tag("serviceNode", serviceNode)
             .register(registry);
 
@@ -62,8 +54,8 @@ public class SyncReplicatorMetricsManager {
         Counter counter = Counter.builder(ZK_REPLICATION_METRIC)
             .tag("from", isSource ? "source" : "target")
             .tag("type", "deletion")
-            .tag("ctype", CURRENT_CTYPE)
-            .tag("instance",HOST_NAME)
+            .tag("ctype", ctype)
+            .tag("cloud", cloud)
             .tag("serviceNode", serviceNode)
             .register(registry);
 
@@ -73,40 +65,40 @@ public class SyncReplicatorMetricsManager {
     public void initConnectionGauge(AtomicLong connectedAt, AtomicBoolean isPaused){
         Gauge.builder(ZK_CONNECTED_GAUGE_METRIC, ()
             -> isPaused.get() ? 0 : System.currentTimeMillis() - connectedAt.get())
-            .tag("ctype", CURRENT_CTYPE)
-            .tag("instance",HOST_NAME)
+            .tag("ctype", ctype)
+            .tag("cloud", cloud)
             .register(registry);
     }
 
     public void initUpTimeGauge(){
         Gauge.builder(ZK_UP_TIME_GAUGE_METRIC, ()
             -> System.currentTimeMillis() - INITIALIZED_AT)
-            .tag("ctype", CURRENT_CTYPE)
-            .tag("instance",HOST_NAME)
+            .tag("ctype", ctype)
+            .tag("cloud", cloud)
             .register(registry);
     }
 
     public void initUsedMemoryGauge(){
         Gauge.builder(ZK_USED_MEM_GAUGE_METRIC, ()
             -> Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory())
-            .tag("ctype", CURRENT_CTYPE)
-            .tag("instance",HOST_NAME)
+            .tag("ctype", ctype)
+            .tag("cloud", cloud)
             .register(registry);
     }
 
     public void initFreeMemoryGauge(){
         Gauge.builder(ZK_FREE_MEM_GAUGE_METRIC, ()
             -> Runtime.getRuntime().freeMemory())
-            .tag("ctype", CURRENT_CTYPE)
-            .tag("instance",HOST_NAME)
+            .tag("ctype", ctype)
+            .tag("cloud", cloud)
             .register(registry);
     }
 
     public void initMaxMemoryGauge(){
         Gauge.builder(ZK_MAX_MEM_GAUGE_METRIC, ()
             -> Runtime.getRuntime().maxMemory())
-            .tag("ctype", CURRENT_CTYPE)
-            .tag("instance",HOST_NAME)
+            .tag("ctype", ctype)
+            .tag("cloud", cloud)
             .register(registry);
     }
 }
