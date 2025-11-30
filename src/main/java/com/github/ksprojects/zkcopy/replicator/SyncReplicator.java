@@ -23,6 +23,7 @@ import java.util.HashSet;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
 
 public class SyncReplicator {
     private static final Logger log = Logger.getLogger(SyncReplicator.class);
@@ -179,36 +180,10 @@ public class SyncReplicator {
         try {
             switch (event.getType()) {
                 case NodeDataChanged:
-                    Stat stat = new Stat();
-                    byte[] data = local.getData(path, localWatcher, stat);
-                    
-                    if (ignoreEphemeralNodes && stat.getEphemeralOwner() > 0) {
-                        return;
-                    }
-
-                    try {
-                        Stat remoteStat = new Stat();
-                        byte[] remoteData = remote.getData(remoteNodePath, false, remoteStat);
-                        if (!Arrays.equals(data, remoteData)) {
-                             log.info(String.format("[%s] Replicating data change to %s. Value: %s", localZkAddress, remoteNodePath, getDataFromBytes(data)));
-                             remote.setData(remoteNodePath, data, -1);
-                             metricsManager.countDataChanged(isSource, serviceNodeName);
-                        }
-                    } catch (KeeperException.NoNodeException e) {
-                        log.info("Remote node missing, creating: " + remoteNodePath);
-                        remote.create(remoteNodePath, data, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
-                        subscribe(remote, remoteNodePath, remoteWatcher); 
-                    }
+                    withSync(local, path, () -> handleNodeDataChanged(local, remote, path, remoteNodePath, localWatcher, isSource, localZkAddress, serviceNodeName));
                     break;
-                    
                 case NodeChildrenChanged:
-                    local.sync(path, (rc, path1, ctx) -> {
-                        if (rc == KeeperException.Code.OK.intValue()) {
-                            handleNodeChildrenChanged(local, remote, path, remoteNodePath, localWatcher, remoteWatcher, isSource, localZkAddress, serviceNodeName);
-                        } else {
-                            log.error("Sync failed for path " + path + ": " + KeeperException.Code.get(rc));
-                        }
-                    }, null);
+                    withSync(local, path, () -> handleNodeChildrenChanged(local, remote, path, remoteNodePath, localWatcher, remoteWatcher, isSource, localZkAddress, serviceNodeName));
                     break;
                 case NodeDeleted:
                     local.exists(path, localWatcher);
@@ -217,6 +192,16 @@ public class SyncReplicator {
         } catch (Exception e) {
             log.error("Error syncing change", e);
         }
+    }
+
+    private void withSync(ZooKeeper local, String path, Runnable handler){
+        local.sync(path, (rc, path1, ctx) -> {
+            if (rc == KeeperException.Code.OK.intValue()) {
+                handler.run();
+            } else {
+                log.error("Sync failed for path " + path + ": " + KeeperException.Code.get(rc));
+            }
+        }, null);
     }
 
     private String extractParentNodeName(String relativePath){
@@ -330,6 +315,38 @@ public class SyncReplicator {
 
     private String getDataFromBytes(byte[] bytes){
         return bytes == null ? "<null>" : new String(bytes);
+    }
+
+    private void handleNodeDataChanged(ZooKeeper local, ZooKeeper remote, String path, String remoteNodePath, Watcher localWatcher, boolean isSource, String localZkAddress, String serviceNodeName) {
+        try {
+            Stat stat = new Stat();
+            byte[] data = local.getData(path, localWatcher, stat);
+
+            if (ignoreEphemeralNodes && stat.getEphemeralOwner() > 0) {
+                return;
+            }
+
+            try {
+                Stat remoteStat = new Stat();
+                byte[] remoteData = remote.getData(remoteNodePath, false, remoteStat);
+                if (!Arrays.equals(data, remoteData)) {
+                    log.info(String.format("[%s] Replicating data change to %s. Value: %s", localZkAddress, remoteNodePath, getDataFromBytes(data)));
+                    remote.setData(remoteNodePath, data, -1);
+                    metricsManager.countDataChanged(isSource, serviceNodeName);
+                }
+            } catch (KeeperException.NoNodeException e) {
+                log.info("Remote node missing, creating: " + remoteNodePath);
+                remote.create(remoteNodePath, data, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+                // We need access to remoteWatcher here, but it wasn't passed. 
+                // However, since we are in handleNodeDataChanged, we know which watcher corresponds to 'remote'.
+                // If isSource is true, remote is targetZk, so remoteWatcher is targetWatcher.
+                // If isSource is false, remote is sourceZk, so remoteWatcher is sourceWatcher.
+                Watcher remoteWatcher = isSource ? targetWatcher : sourceWatcher;
+                subscribe(remote, remoteNodePath, remoteWatcher);
+            }
+        } catch (Exception e) {
+            log.error("Error syncing data change", e);
+        }
     }
 
     private void handleNodeChildrenChanged(ZooKeeper local, ZooKeeper remote, String path, String remoteNodePath, Watcher localWatcher, Watcher remoteWatcher, boolean isSource, String localZkAddress, String serviceNodeName) {
