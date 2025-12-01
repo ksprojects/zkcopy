@@ -85,6 +85,7 @@ public class SyncReplicator {
             log.info("Initial comparison successful. Starting event listeners...");
             subscribe(sourceZk, sourcePath, sourceWatcher);
             subscribe(targetZk, targetPath, targetWatcher);
+            log.info("Event listeners started.");
             
             synchronized (this) {
                 while (isRunning.get()) {
@@ -187,6 +188,7 @@ public class SyncReplicator {
                     break;
                 case NodeDeleted:
                     local.exists(path, localWatcher);
+                    deleteRecursive(remote, remoteNodePath, isSource, localZkAddress, serviceNodeName);
                     break;
             }
         } catch (Exception e) {
@@ -228,11 +230,11 @@ public class SyncReplicator {
             to.create(toPath, data, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
             metricsManager.countCreation(isSource, serviceNodeName);
         } catch (KeeperException.NodeExistsException e) {
-            to.setData(toPath, data, -1);
-            metricsManager.countDataChanged(isSource, serviceNodeName);
+            log.warn(String.format("[%s] Node %s already exists. Skipping creation.", localZkAddress, toPath));
         }
-        subscribe(to, toPath, toWatcher);
-        
+
+        watchNode(to, toPath, toWatcher);
+
         List<String> children = from.getChildren(fromPath, fromWatcher);
         for (String child : children) {
             String childFullPath = fromPath.equals("/") ? "/" + child : fromPath + "/" + child;
@@ -252,14 +254,24 @@ public class SyncReplicator {
         }
         log.info(String.format("[%s] Replicating deletion of %s", localZkAddress, path));
 
-        try {
-            List<String> children = zk.getChildren(path, false);
-            for (String child : children) {
-                deleteRecursive(zk, path + "/" + child, isSource, localZkAddress, serviceNodeName);
+        while (true) {
+            try {
+                zk.delete(path, -1);
+                metricsManager.countDeletion(isSource, serviceNodeName);
+                return;
+            } catch (KeeperException.NotEmptyException e) {
+                try {
+                    List<String> children = zk.getChildren(path, false);
+                    for (String child : children) {
+                        deleteRecursive(zk, path + "/" + child, isSource, localZkAddress, serviceNodeName);
+                    }
+                } catch (KeeperException.NoNodeException ignore) {
+                    // Node might be deleted by another process or previous iteration
+                    return;
+                }
+            } catch (KeeperException.NoNodeException ignore) {
+                return;
             }
-            zk.delete(path, -1);
-            metricsManager.countDeletion(isSource, serviceNodeName);
-        } catch (KeeperException.NoNodeException ignore) {
         }
     }
     
@@ -309,6 +321,23 @@ public class SyncReplicator {
         }
     }
 
+    private void watchNode(ZooKeeper zk, String path, Watcher watcher) throws KeeperException, InterruptedException {
+        if (ignoredPaths.contains(path)) {
+            return;
+        }
+        if (ignoreEphemeralNodes) {
+            Stat stat = zk.exists(path, false);
+            if (stat != null && stat.getEphemeralOwner() > 0) {
+                return;
+            }
+        }
+        try {
+            zk.getData(path, watcher, null);
+            zk.getChildren(path, watcher);
+        } catch (KeeperException.NoNodeException ignore) {
+        }
+    }
+
     private String makeChildPath(String path, String child){
         return path.equals("/") ? "/" + child : path + "/" + child;
     }
@@ -335,14 +364,9 @@ public class SyncReplicator {
                     metricsManager.countDataChanged(isSource, serviceNodeName);
                 }
             } catch (KeeperException.NoNodeException e) {
-                log.info("Remote node missing, creating: " + remoteNodePath);
-                remote.create(remoteNodePath, data, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
-                // We need access to remoteWatcher here, but it wasn't passed. 
-                // However, since we are in handleNodeDataChanged, we know which watcher corresponds to 'remote'.
-                // If isSource is true, remote is targetZk, so remoteWatcher is targetWatcher.
-                // If isSource is false, remote is sourceZk, so remoteWatcher is sourceWatcher.
+                log.info("Remote node missing, creating with children: " + remoteNodePath);
                 Watcher remoteWatcher = isSource ? targetWatcher : sourceWatcher;
-                subscribe(remote, remoteNodePath, remoteWatcher);
+                copyNodeRecursive(local, remote, path, remoteNodePath, localWatcher, remoteWatcher, isSource, localZkAddress, serviceNodeName);
             }
         } catch (Exception e) {
             log.error("Error syncing data change", e);
@@ -371,13 +395,6 @@ public class SyncReplicator {
                     String remoteChildPath = makeChildPath(remoteNodePath, child);
 
                     copyNodeRecursive(local, remote, childPath, remoteChildPath, localWatcher, remoteWatcher, isSource, localZkAddress, serviceNodeName);
-                }
-            }
-
-            for (String child : remoteSet) {
-                if (!localSet.contains(child)) {
-                    String remoteChildPath = makeChildPath(remoteNodePath, child);
-                    deleteRecursive(remote, remoteChildPath, isSource, localZkAddress, serviceNodeName);
                 }
             }
         } catch (Exception e) {

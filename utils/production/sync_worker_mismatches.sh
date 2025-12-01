@@ -34,6 +34,8 @@ PATHS_TO_TARGET=(
 "/ichwill-zen/production/bazinga_ucp_dzen_recommender_worker_recommender_worker/heartbeat"
 "/ichwill-zen/production/bazinga_recommender_wizard_worker/heartbeat"
 "/ichwill-zen/production/bazinga_comments_worker/heartbeat"
+"/ichwill-zen/production/bazinga_isec_worker/heartbeat"
+"/ichwill-zen/production/dynproperties-recommender-ucp-gateway-posts/base-recommender-allowed-traffic-ratio-by-dc-json"
 )
 
 PATHS_TO_SOURCE=(
