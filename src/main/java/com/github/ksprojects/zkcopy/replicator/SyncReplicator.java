@@ -4,8 +4,6 @@ import com.github.ksprojects.zkcopy.Node;
 import com.github.ksprojects.zkcopy.comparator.Comparator;
 import com.github.ksprojects.zkcopy.metric.SyncReplicatorMetricsManager;
 import com.github.ksprojects.zkcopy.reader.Reader;
-import io.micrometer.core.instrument.Counter;
-import io.micrometer.prometheus.PrometheusMeterRegistry;
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
@@ -23,7 +21,6 @@ import java.util.HashSet;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Function;
 
 public class SyncReplicator {
     private static final Logger log = Logger.getLogger(SyncReplicator.class);
@@ -188,11 +185,21 @@ public class SyncReplicator {
                     break;
                 case NodeDeleted:
                     local.exists(path, localWatcher);
-                    deleteRecursive(remote, remoteNodePath, isSource, localZkAddress, serviceNodeName);
+                    withSync(local, path, () -> handleNodeDeletion(remote, remoteNodePath, isSource, localZkAddress, serviceNodeName));
                     break;
             }
         } catch (Exception e) {
             log.error("Error syncing change", e);
+        }
+    }
+
+    private void handleNodeDeletion(ZooKeeper zk, String path, boolean isSource, String localZkAddress, String serviceNodeName){
+        try {
+            if (zk.exists(path, false) != null) {
+                deleteRecursive(zk, path, isSource, localZkAddress, serviceNodeName);
+            }
+        } catch (InterruptedException | KeeperException e) {
+            log.error("Error syncing deletion.");
         }
     }
 
@@ -266,7 +273,6 @@ public class SyncReplicator {
                         deleteRecursive(zk, path + "/" + child, isSource, localZkAddress, serviceNodeName);
                     }
                 } catch (KeeperException.NoNodeException ignore) {
-                    // Node might be deleted by another process or previous iteration
                     return;
                 }
             } catch (KeeperException.NoNodeException ignore) {
@@ -359,7 +365,7 @@ public class SyncReplicator {
                 Stat remoteStat = new Stat();
                 byte[] remoteData = remote.getData(remoteNodePath, false, remoteStat);
                 if (!Arrays.equals(data, remoteData)) {
-                    log.info(String.format("[%s] Replicating data change to %s. Value: %s", localZkAddress, remoteNodePath, getDataFromBytes(data)));
+                    log.info(String.format("[%s] Replicating data change to %s. Old value: %s. New value: %s", localZkAddress, remoteNodePath, getDataFromBytes(remoteData), getDataFromBytes(data)));
                     remote.setData(remoteNodePath, data, -1);
                     metricsManager.countDataChanged(isSource, serviceNodeName);
                 }
