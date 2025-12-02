@@ -365,9 +365,14 @@ public class SyncReplicator {
                 Stat remoteStat = new Stat();
                 byte[] remoteData = remote.getData(remoteNodePath, false, remoteStat);
                 if (!Arrays.equals(data, remoteData)) {
-                    log.info(String.format("[%s] Replicating data change to %s. Old value: %s. New value: %s", localZkAddress, remoteNodePath, getDataFromBytes(remoteData), getDataFromBytes(data)));
-                    remote.setData(remoteNodePath, data, -1);
-                    metricsManager.countDataChanged(isSource, serviceNodeName);
+                    if (stat.getMtime() > remoteStat.getMtime()) {
+                        log.info(String.format("[%s] Replicating data change to %s. Old value: %s. New value: %s", localZkAddress, remoteNodePath, getDataFromBytes(remoteData), getDataFromBytes(data)));
+                        remote.setData(remoteNodePath, data, -1);
+                        metricsManager.countDataChanged(isSource, serviceNodeName);
+                    } else {
+                        log.debug(String.format("[%s] Ignoring echo/stale update for %s. Local mtime (%d) <= Remote mtime (%d)", 
+                                localZkAddress, remoteNodePath, stat.getMtime(), remoteStat.getMtime()));
+                    }
                 }
             } catch (KeeperException.NoNodeException e) {
                 log.info("Remote node missing, creating with children: " + remoteNodePath);
