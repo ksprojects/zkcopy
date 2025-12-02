@@ -5,6 +5,6 @@ java -jar zkcopy.jar \
   --syncMode \
   --withMetrics \
   --metricsUrl http://vmagent.mon.one-infra.ru/api/v1/import/prometheus \
-  --cloud HC \
+  --cloud PC \
   --ctype prod \
     >> zksync.log &

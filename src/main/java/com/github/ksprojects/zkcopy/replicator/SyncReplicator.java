@@ -361,24 +361,32 @@ public class SyncReplicator {
                 return;
             }
 
-            try {
-                Stat remoteStat = new Stat();
-                byte[] remoteData = remote.getData(remoteNodePath, false, remoteStat);
-                if (!Arrays.equals(data, remoteData)) {
-                    if (stat.getMtime() > remoteStat.getMtime()) {
-                        log.info(String.format("[%s] Replicating data change to %s. Old value: %s. New value: %s", localZkAddress, remoteNodePath, getDataFromBytes(remoteData), getDataFromBytes(data)));
-                        remote.setData(remoteNodePath, data, -1);
-                        metricsManager.countDataChanged(isSource, serviceNodeName);
-                    } else {
-                        log.debug(String.format("[%s] Ignoring echo/stale update for %s. Local mtime (%d) <= Remote mtime (%d)", 
-                                localZkAddress, remoteNodePath, stat.getMtime(), remoteStat.getMtime()));
+            withSync(remote, remoteNodePath, () -> {
+                try {
+                    Stat remoteStat = new Stat();
+                    byte[] remoteData = remote.getData(remoteNodePath, false, remoteStat);
+                    if (!Arrays.equals(data, remoteData)) {
+                        if (stat.getMtime() >= remoteStat.getMtime()) {
+                            log.info(String.format("[%s] Replicating data change to %s. Old value: %s. New value: %s", localZkAddress, remoteNodePath, getDataFromBytes(remoteData), getDataFromBytes(data)));
+                            remote.setData(remoteNodePath, data, -1);
+                            metricsManager.countDataChanged(isSource, serviceNodeName);
+                        } else {
+                            log.debug(String.format("[%s] Ignoring echo/stale update for %s. Local mtime (%d) <= Remote mtime (%d)", 
+                                    localZkAddress, remoteNodePath, stat.getMtime(), remoteStat.getMtime()));
+                        }
                     }
+                } catch (KeeperException.NoNodeException e) {
+                    log.info("Remote node missing, creating with children: " + remoteNodePath);
+                    Watcher remoteWatcher = isSource ? targetWatcher : sourceWatcher;
+                    try {
+                        copyNodeRecursive(local, remote, path, remoteNodePath, localWatcher, remoteWatcher, isSource, localZkAddress, serviceNodeName);
+                    } catch (Exception ex) {
+                        log.error("Error recursively copying node", ex);
+                    }
+                } catch (Exception e) {
+                    log.error("Error processing remote data change", e);
                 }
-            } catch (KeeperException.NoNodeException e) {
-                log.info("Remote node missing, creating with children: " + remoteNodePath);
-                Watcher remoteWatcher = isSource ? targetWatcher : sourceWatcher;
-                copyNodeRecursive(local, remote, path, remoteNodePath, localWatcher, remoteWatcher, isSource, localZkAddress, serviceNodeName);
-            }
+            });
         } catch (Exception e) {
             log.error("Error syncing data change", e);
         }
