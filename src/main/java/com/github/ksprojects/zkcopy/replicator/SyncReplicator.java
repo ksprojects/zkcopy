@@ -288,20 +288,46 @@ public class SyncReplicator {
         } else if (state == Watcher.Event.KeeperState.SyncConnected) {
             connectedAt.set(System.currentTimeMillis());
             if (paused.get()) {
-                log.info("Connection restored. Running comparison...");
-                if (runCompare()) {
-                    log.info("Comparison OK. Resuming.");
-                    paused.set(false);
+                log.info("Connection restored. Initiating recovery sequence...");
+                
+                new Thread(() -> {
                     try {
-                         subscribe(sourceZk, sourcePath, sourceWatcher);
-                         subscribe(targetZk, targetPath, targetWatcher);
+                        if (runCompare()) {
+                            log.info("Comparison OK. Recreating session to ensure stability...");
+                            reconnectAndSubscribe();
+                            log.info("Recovery successful. Resuming replication.");
+                            paused.set(false);
+                        } else {
+                            log.error("Comparison failed after recovery. Exiting.");
+                            System.exit(1);
+                        }
                     } catch (Exception e) {
-                        log.error("Resubscribe failed", e);
+                        log.error("Critical error during recovery sequence", e);
+                        System.exit(1); 
                     }
-                } else {
-                    log.error("Comparison failed after recovery. Exiting.");
-                    System.exit(1);
-                }
+                }, "Recovery-Thread").start();
+            }
+        }
+    }
+
+    private void reconnectAndSubscribe() throws IOException, InterruptedException, KeeperException {
+        closeQuietly(sourceZk);
+        closeQuietly(targetZk);
+
+        log.info("Re-establishing ZooKeeper connections...");
+        connect();
+
+        log.info("Subscribing watchers...");
+        subscribe(sourceZk, sourcePath, sourceWatcher);
+        subscribe(targetZk, targetPath, targetWatcher);
+    }
+
+    private void closeQuietly(ZooKeeper zk) {
+        if (zk != null) {
+            try {
+                zk.close();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
         }
     }

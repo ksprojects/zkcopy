@@ -6,7 +6,6 @@ ZKCOPY_JAR="zkcopy.jar"
 JOBS=30
 
 PATHS_TO_TARGET=(
-"/ichwill-zen/production/bazinga_ok_social_recommender_worker/heartbeat"
 "/ichwill-zen/production/bazinga_ok_money_worker/heartbeat"
 "/ichwill-zen/production/bazinga_topic_channel_worker/heartbeat"
 "/ichwill-zen/production/bazinga_adtech_recommender_worker/heartbeat"
@@ -35,10 +34,14 @@ PATHS_TO_TARGET=(
 "/ichwill-zen/production/bazinga_recommender_wizard_worker/heartbeat"
 "/ichwill-zen/production/bazinga_comments_worker/heartbeat"
 "/ichwill-zen/production/bazinga_isec_worker/heartbeat"
-"/ichwill-zen/production/dynproperties-recommender-ucp-gateway-posts/base-recommender-allowed-traffic-ratio-by-dc-json"
+"/ichwill-zen/production/dynproperties-dzen-news-base-recommender/dragonfly-total-limit-string"
+"/ichwill-zen/production/dynproperties-bifrost-item-counters-vk-video/measure-file-cache-size-boolean"
+"/ichwill-zen/production/dynproperties-dzen-news-base-recommender/dragonfly-local-limit-string"
+"/ichwill-zen/production/dynproperties-ok-discovery-base-feeds/web-max-memory-used-by-snapshots-gigabytes-int"
 )
 
 PATHS_TO_SOURCE=(
+"/ichwill-zen/production/bazinga_ok_social_recommender_worker/heartbeat"
 )
 
 echo "Starting parallel sync with $JOBS jobs..."
@@ -48,9 +51,11 @@ printf "%s\n" "${PATHS_TO_TARGET[@]}" | xargs -P "$JOBS" -I {} \
     --source "$SOURCE{}" \
     --target "$TARGET{}" \
     --workers 10
+    -с
 
 printf "%s\n" "${PATHS_TO_SOURCE[@]}" | xargs -P "$JOBS" -I {} \
     java -jar "$ZKCOPY_JAR" \
     --source "$TARGET{}" \
     --target "$SOURCE{}" \
     --workers 10
+    -с
