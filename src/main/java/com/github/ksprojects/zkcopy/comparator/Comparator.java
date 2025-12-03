@@ -26,6 +26,10 @@ public class Comparator {
     
     public boolean compare() {
         List<String> errors = new ArrayList<>();
+        if (sourceRoot == null || targetRoot == null){
+            LOGGER.error("Null node provided for compare!");
+            return false;
+        }
         compareNodes(sourceRoot, targetRoot, errors);
         
         if (errors.isEmpty()) {
