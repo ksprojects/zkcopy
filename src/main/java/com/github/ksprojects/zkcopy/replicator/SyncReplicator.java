@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class SyncReplicator {
     private static final Logger log = Logger.getLogger(SyncReplicator.class);
+    private static final int MAX_RECONNECTION_RETRIES = 5;
     
     private final String sourceAddress;
     private final String targetAddress;
@@ -292,13 +293,13 @@ public class SyncReplicator {
                 
                 new Thread(() -> {
                     try {
-                        if (runCompare()) {
+                        if (runCompareWithRetries()) {
                             log.info("Comparison OK. Recreating session to ensure stability...");
                             reconnectAndSubscribe();
                             log.info("Recovery successful. Resuming replication.");
                             paused.set(false);
                         } else {
-                            log.error("Comparison failed after recovery. Exiting.");
+                            log.error("Comparison failed after " + MAX_RECONNECTION_RETRIES + " attempts. Exiting.");
                             System.exit(1);
                         }
                     } catch (Exception e) {
@@ -308,6 +309,20 @@ public class SyncReplicator {
                 }, "Recovery-Thread").start();
             }
         }
+    }
+
+    private boolean runCompareWithRetries(){
+        int attempts = 0;
+        while (attempts < MAX_RECONNECTION_RETRIES) {
+            attempts++;
+            log.info("Running recovery comparison (attempt " + attempts + "/" + MAX_RECONNECTION_RETRIES + ")...");
+
+            if (runCompare()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void reconnectAndSubscribe() throws IOException, InterruptedException, KeeperException {
