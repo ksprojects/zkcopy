@@ -16,15 +16,21 @@ import org.apache.zookeeper.data.Stat;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class SyncReplicator {
     private static final Logger log = Logger.getLogger(SyncReplicator.class);
     private static final int MAX_RECONNECTION_RETRIES = 5;
+    private static final long MAX_LOG_AGE_MILLISECONDS = 1000;
     
     private final String sourceAddress;
     private final String targetAddress;
@@ -34,7 +40,11 @@ public class SyncReplicator {
     private final boolean ignoreEphemeralNodes;
     private final int workers;
     private final Set<String> ignoredPaths;
-    
+
+    private final Map<String, Long> deleteLog;
+    private final Map<String, Long> createLog;
+    private final ScheduledExecutorService logsInvalidator;
+
     private ZooKeeper sourceZk;
     private ZooKeeper targetZk;
     
@@ -63,6 +73,10 @@ public class SyncReplicator {
         this.metricsManager = metricsManager;
         this.connectedAt = new AtomicLong();
 
+        this.deleteLog = new ConcurrentHashMap<>();
+        this.createLog = new ConcurrentHashMap<>();
+        this.logsInvalidator = Executors.newScheduledThreadPool(1);
+
         this.sourceWatcher = event -> processEvent(event, true);
         this.targetWatcher = event -> processEvent(event, false);
     }
@@ -74,6 +88,7 @@ public class SyncReplicator {
         try {
             connect();
             initConnectionGauge();
+            initLogsInvalidator();
 
             if (!runCompare()) {
                  log.error("Initial comparison failed. Aborting sync mode.");
@@ -94,6 +109,21 @@ public class SyncReplicator {
             log.error("Error in SyncReplicator", e);
             System.exit(1);
         }
+    }
+
+    private void initLogsInvalidator(){
+        logsInvalidator.scheduleAtFixedRate(
+            this::invalidateLogs,
+            MAX_LOG_AGE_MILLISECONDS,
+            MAX_LOG_AGE_MILLISECONDS,
+            TimeUnit.MILLISECONDS
+        );
+    }
+
+    private void invalidateLogs(){
+        createLog.entrySet().removeIf(
+            entry -> System.currentTimeMillis() - entry.getValue() > MAX_LOG_AGE_MILLISECONDS
+        );
     }
 
     private void connect() throws IOException, InterruptedException {
@@ -196,6 +226,10 @@ public class SyncReplicator {
 
     private void handleNodeDeletion(ZooKeeper zk, String path, boolean isSource, String localZkAddress, String serviceNodeName){
         try {
+            if (deleteLog.containsKey(path)){
+                deleteLog.remove(path);
+                return;
+            }
             if (zk.exists(path, false) != null) {
                 deleteRecursive(zk, path, isSource, localZkAddress, serviceNodeName);
             }
@@ -235,6 +269,7 @@ public class SyncReplicator {
         log.info(String.format("[%s] Replicating creation of %s. Value: %s", localZkAddress, fromPath, getDataFromBytes(data)));
         
         try {
+            createLog.put(toPath, System.currentTimeMillis());
             to.create(toPath, data, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
             metricsManager.countCreation(isSource, serviceNodeName);
         } catch (KeeperException.NodeExistsException e) {
@@ -264,6 +299,7 @@ public class SyncReplicator {
 
         while (true) {
             try {
+                deleteLog.put(path, System.currentTimeMillis());
                 zk.delete(path, -1);
                 metricsManager.countDeletion(isSource, serviceNodeName);
                 return;
@@ -417,13 +453,7 @@ public class SyncReplicator {
                         }
                     }
                 } catch (KeeperException.NoNodeException e) {
-                    log.info("Remote node missing, creating with children: " + remoteNodePath);
-                    Watcher remoteWatcher = isSource ? targetWatcher : sourceWatcher;
-                    try {
-                        copyNodeRecursive(local, remote, path, remoteNodePath, localWatcher, remoteWatcher, isSource, localZkAddress, serviceNodeName);
-                    } catch (Exception ex) {
-                        log.error("Error recursively copying node", ex);
-                    }
+                    log.info(String.format("Remote node missing: %s. Skipped.", remoteNodePath));
                 } catch (Exception e) {
                     log.error("Error processing remote data change", e);
                 }
@@ -447,8 +477,12 @@ public class SyncReplicator {
             Set<String> remoteSet = new HashSet<>(remoteChildren);
 
             for (String child : localSet) {
+                String childPath = makeChildPath(path, child);
+                if (createLog.containsKey(childPath)){
+                    createLog.remove(childPath);
+                    continue;
+                }
                 if (!remoteSet.contains(child)) {
-                    String childPath = makeChildPath(path, child);
                     if (ignoredPaths.contains(childPath)) {
                         continue;
                     }
