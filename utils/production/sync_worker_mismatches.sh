@@ -50,12 +50,12 @@ printf "%s\n" "${PATHS_TO_TARGET[@]}" | xargs -P "$JOBS" -I {} \
     java -jar "$ZKCOPY_JAR" \
     --source "$SOURCE{}" \
     --target "$TARGET{}" \
-    --workers 10
-    -с
+    --workers 10 \
+    --copyOnly
 
 printf "%s\n" "${PATHS_TO_SOURCE[@]}" | xargs -P "$JOBS" -I {} \
     java -jar "$ZKCOPY_JAR" \
     --source "$TARGET{}" \
     --target "$SOURCE{}" \
-    --workers 10
-    -с
+    --workers 10 \
+    --copyOnly

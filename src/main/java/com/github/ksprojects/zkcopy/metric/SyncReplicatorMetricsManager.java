@@ -15,6 +15,7 @@ public class SyncReplicatorMetricsManager {
     public static final String ZK_FREE_MEM_GAUGE_METRIC = "ucp_zk_replication_memory_free";
     public static final String ZK_USED_MEM_GAUGE_METRIC = "ucp_zk_replication_memory_used";
     public static final String ZK_MAX_MEM_GAUGE_METRIC = "ucp_zk_replication_memory_max";
+    public static final String DZEN_DATASOURCE_NAME = "dzen";
 
     private final PrometheusMeterRegistry registry;
     public final String ctype;
@@ -33,6 +34,7 @@ public class SyncReplicatorMetricsManager {
             .tag("ctype", ctype)
             .tag("cloud", cloud)
             .tag("serviceNode", serviceNode)
+            .tag("cloud_namespace", DZEN_DATASOURCE_NAME)
             .register(registry);
 
         counter.increment();
@@ -45,6 +47,7 @@ public class SyncReplicatorMetricsManager {
             .tag("ctype", ctype)
             .tag("cloud", cloud)
             .tag("serviceNode", serviceNode)
+            .tag("cloud_namespace", DZEN_DATASOURCE_NAME)
             .register(registry);
 
         counter.increment();
@@ -57,6 +60,7 @@ public class SyncReplicatorMetricsManager {
             .tag("ctype", ctype)
             .tag("cloud", cloud)
             .tag("serviceNode", serviceNode)
+            .tag("cloud_namespace", DZEN_DATASOURCE_NAME)
             .register(registry);
 
         counter.increment();
@@ -67,6 +71,7 @@ public class SyncReplicatorMetricsManager {
             -> isPaused.get() ? 0 : System.currentTimeMillis() - connectedAt.get())
             .tag("ctype", ctype)
             .tag("cloud", cloud)
+            .tag("cloud_namespace", DZEN_DATASOURCE_NAME)
             .register(registry);
     }
 
@@ -75,6 +80,7 @@ public class SyncReplicatorMetricsManager {
             -> System.currentTimeMillis() - INITIALIZED_AT)
             .tag("ctype", ctype)
             .tag("cloud", cloud)
+            .tag("cloud_namespace", DZEN_DATASOURCE_NAME)
             .register(registry);
     }
 
@@ -83,6 +89,7 @@ public class SyncReplicatorMetricsManager {
             -> Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory())
             .tag("ctype", ctype)
             .tag("cloud", cloud)
+            .tag("cloud_namespace", DZEN_DATASOURCE_NAME)
             .register(registry);
     }
 
@@ -91,6 +98,7 @@ public class SyncReplicatorMetricsManager {
             -> Runtime.getRuntime().freeMemory())
             .tag("ctype", ctype)
             .tag("cloud", cloud)
+            .tag("cloud_namespace", DZEN_DATASOURCE_NAME)
             .register(registry);
     }
 
@@ -99,6 +107,7 @@ public class SyncReplicatorMetricsManager {
             -> Runtime.getRuntime().maxMemory())
             .tag("ctype", ctype)
             .tag("cloud", cloud)
+            .tag("cloud_namespace", DZEN_DATASOURCE_NAME)
             .register(registry);
     }
 }

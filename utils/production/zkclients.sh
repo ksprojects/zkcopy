@@ -16,6 +16,6 @@ echo "$IPS" | xargs -n 1 -P 20 -I {} bash -c '
         echo "$IP"
     fi
 ' | grep -E '^[0-9]+\.[0-9a-zA-Z-]+\.[0-9a-zA-Z-]+\.[0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)?\.[0-9a-zA-Z-]+\.[0-9a-zA-Z-]+\.$' \
-| cut -d'.' -f3 \
+| cut -d'.' -f3,4 \
 | sort -u
 
