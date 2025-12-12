@@ -7,4 +7,5 @@ java -jar zkcopy.jar \
   --metricsUrl http://vmagent.mon.one-infra.ru/api/v1/import/prometheus \
   --cloud HC \
   --ctype test \
+  --ignoreEphemeralNodes=false \
     > zksync.log &

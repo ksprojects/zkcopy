@@ -256,15 +256,21 @@ public class SyncReplicator {
     }
 
     private void copyNodeRecursive(ZooKeeper from, ZooKeeper to, String fromPath, String toPath, Watcher fromWatcher, Watcher toWatcher, boolean isSource, String localZkAddress, String serviceNodeName) throws KeeperException, InterruptedException {
-        if (ignoreEphemeralNodes) {
-            Stat stat = from.exists(fromPath, false);
-            if (stat != null && stat.getEphemeralOwner() > 0) {
-                return;
-            }
+        Stat stat = new Stat();
+        byte[] data;
+        try {
+            data = from.getData(fromPath, fromWatcher, stat);
+        } catch (KeeperException.NoNodeException e) {
+            return;
         }
 
-        Stat stat = new Stat();
-        byte[] data = from.getData(fromPath, fromWatcher, stat);
+        if (ignoreEphemeralNodes && stat.getEphemeralOwner() > 0) {
+            return;
+        }
+
+        if (stat.getEphemeralOwner() > 0) {
+            log.info(String.format("[%s] Replicating ephemeral node %s as PERSISTENT.", localZkAddress, fromPath));
+        }
 
         log.info(String.format("[%s] Replicating creation of %s. Value: %s", localZkAddress, fromPath, getDataFromBytes(data)));
         
