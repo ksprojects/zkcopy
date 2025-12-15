@@ -96,8 +96,8 @@ public class SyncReplicator {
             }
             
             log.info("Initial comparison successful. Starting event listeners...");
-            subscribe(sourceZk, sourcePath, sourceWatcher);
-            subscribe(targetZk, targetPath, targetWatcher);
+            subscribe(sourceZk, targetZk, sourcePath, sourcePath, targetPath, sourceWatcher, true);
+            subscribe(targetZk, sourceZk, targetPath, targetPath, sourcePath, targetWatcher, false);
             log.info("Event listeners started.");
             
             synchronized (this) {
@@ -158,10 +158,11 @@ public class SyncReplicator {
 
     private boolean runCompare() {
         log.info("Running comparison...");
-        Reader sourceReader = new Reader(sourceAddress, workers, sessionTimeout, ignoreEphemeralNodes, ignoredPaths);
+        boolean ignoreEphemeralForCompare = true;
+        Reader sourceReader = new Reader(sourceAddress, workers, sessionTimeout, ignoreEphemeralForCompare, ignoredPaths);
         Node sourceRoot = sourceReader.read();
         
-        Reader targetReader = new Reader(targetAddress, workers, sessionTimeout, ignoreEphemeralNodes, ignoredPaths);
+        Reader targetReader = new Reader(targetAddress, workers, sessionTimeout, ignoreEphemeralForCompare, ignoredPaths);
         Node targetRoot = targetReader.read();
         
         Comparator comparator = new Comparator(sourceRoot, targetRoot);
@@ -209,7 +210,7 @@ public class SyncReplicator {
         try {
             switch (event.getType()) {
                 case NodeDataChanged:
-                    withSync(local, path, () -> handleNodeDataChanged(local, remote, path, remoteNodePath, localWatcher, isSource, localZkAddress, serviceNodeName));
+                    withSync(local, path, () -> handleNodeDataChanged(local, remote, path, remoteNodePath, localWatcher, remoteWatcher, isSource, localZkAddress, serviceNodeName));
                     break;
                 case NodeChildrenChanged:
                     withSync(local, path, () -> handleNodeChildrenChanged(local, remote, path, remoteNodePath, localWatcher, remoteWatcher, isSource, localZkAddress, serviceNodeName));
@@ -268,15 +269,17 @@ public class SyncReplicator {
             return;
         }
 
+        CreateMode createMode = CreateMode.PERSISTENT;
         if (stat.getEphemeralOwner() > 0) {
-            log.info(String.format("[%s] Replicating ephemeral node %s as PERSISTENT.", localZkAddress, fromPath));
+            createMode = CreateMode.EPHEMERAL;
+            log.info(String.format("[%s] Replicating ephemeral node %s as EPHEMERAL.", localZkAddress, fromPath));
+        } else {
+            log.info(String.format("[%s] Replicating creation of %s. Value: %s", localZkAddress, fromPath, getDataFromBytes(data)));
         }
-
-        log.info(String.format("[%s] Replicating creation of %s. Value: %s", localZkAddress, fromPath, getDataFromBytes(data)));
         
         try {
             createLog.put(toPath, System.currentTimeMillis());
-            to.create(toPath, data, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+            to.create(toPath, data, ZooDefs.Ids.OPEN_ACL_UNSAFE, createMode);
             metricsManager.countCreation(isSource, serviceNodeName);
         } catch (KeeperException.NodeExistsException e) {
             log.warn(String.format("[%s] Node %s already exists. Skipping creation.", localZkAddress, toPath));
@@ -301,6 +304,18 @@ public class SyncReplicator {
                 return;
             }
         }
+        
+        if (!ignoreEphemeralNodes) {
+            Stat stat = zk.exists(path, false);
+            if (stat != null && stat.getEphemeralOwner() > 0) {
+                if (stat.getEphemeralOwner() != zk.getSessionId()) {
+                    log.warn(String.format("[%s] Skipping deletion of ephemeral node %s. It is not owned by current session (Owner: %d, Current: %d). This is likely an original node protected from bidirectional sync deletion.", 
+                        localZkAddress, path, stat.getEphemeralOwner(), zk.getSessionId()));
+                    return;
+                }
+            }
+        }
+
         log.info(String.format("[%s] Replicating deletion of %s", localZkAddress, path));
 
         while (true) {
@@ -375,8 +390,8 @@ public class SyncReplicator {
         connect();
 
         log.info("Subscribing watchers...");
-        subscribe(sourceZk, sourcePath, sourceWatcher);
-        subscribe(targetZk, targetPath, targetWatcher);
+        subscribe(sourceZk, targetZk, sourcePath, sourcePath, targetPath, sourceWatcher, true);
+        subscribe(targetZk, sourceZk, targetPath, targetPath, sourcePath, targetWatcher, false);
     }
 
     private void closeQuietly(ZooKeeper zk) {
@@ -389,24 +404,67 @@ public class SyncReplicator {
         }
     }
     
-    private void subscribe(ZooKeeper zk, String path, Watcher watcher) throws KeeperException, InterruptedException {
+    private void subscribe(ZooKeeper localZk, ZooKeeper remoteZk, String path, String localRoot, String remoteRoot, Watcher watcher, boolean isSource) throws KeeperException, InterruptedException {
         if (ignoredPaths.contains(path)) {
             return;
         }
         if (ignoreEphemeralNodes) {
-            Stat stat = zk.exists(path, false);
+            Stat stat = localZk.exists(path, false);
             if (stat != null && stat.getEphemeralOwner() > 0) {
                 return;
             }
         }
         try {
-            zk.getData(path, watcher, null);
-            List<String> children = zk.getChildren(path, watcher);
+            Stat stat = new Stat();
+            byte[] data = localZk.getData(path, watcher, stat);
+            
+            if (!ignoreEphemeralNodes && stat.getEphemeralOwner() > 0) {
+                syncEphemeralNode(remoteZk, path, localRoot, remoteRoot, stat, data, isSource);
+            }
+
+            List<String> children = localZk.getChildren(path, watcher);
             for (String child : children) {
                 String childPath = makeChildPath(path, child);
-                subscribe(zk, childPath, watcher);
+                subscribe(localZk, remoteZk, childPath, localRoot, remoteRoot, watcher, isSource);
             }
         } catch (KeeperException.NoNodeException ignore) {
+        }
+    }
+
+    private void syncEphemeralNode(ZooKeeper remote, String localNodePath, String localRoot, String remoteRoot, Stat localStat, byte[] localData, boolean isSource) {
+        String relativePath;
+        if (localNodePath.equals(localRoot)) {
+            relativePath = "";
+        } else if (localNodePath.startsWith(localRoot + "/")) {
+            relativePath = localNodePath.substring(localRoot.length());
+        } else {
+            return;
+        }
+        final String serviceNodeName = extractParentNodeName(relativePath);
+        String remoteNodePathRaw = remoteRoot + relativePath;
+        if (remoteNodePathRaw.startsWith("//")) remoteNodePathRaw = remoteNodePathRaw.substring(1);
+        String remoteNodePath = remoteNodePathRaw;
+
+        try {
+            Stat remoteStat = remote.exists(remoteNodePath, false);
+            
+            if (remoteStat == null) {
+                log.info(String.format("Syncing missing ephemeral node to remote: %s", remoteNodePath));
+                createLog.put(remoteNodePath, System.currentTimeMillis());
+                remote.create(remoteNodePath, localData, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+                metricsManager.countCreation(isSource, serviceNodeName);
+            } else {
+                byte[] remoteData = remote.getData(remoteNodePath, false, remoteStat);
+                if (!Arrays.equals(localData, remoteData)) {
+                    if (localStat.getMtime() > remoteStat.getMtime()) {
+                        log.info(String.format("Updating ephemeral node on remote (newer mtime): %s", remoteNodePath));
+                        remote.setData(remoteNodePath, localData, -1);
+                        metricsManager.countDataChanged(isSource, serviceNodeName);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to sync ephemeral node " + localNodePath, e);
         }
     }
 
@@ -435,7 +493,7 @@ public class SyncReplicator {
         return bytes == null ? "<null>" : new String(bytes);
     }
 
-    private void handleNodeDataChanged(ZooKeeper local, ZooKeeper remote, String path, String remoteNodePath, Watcher localWatcher, boolean isSource, String localZkAddress, String serviceNodeName) {
+    private void handleNodeDataChanged(ZooKeeper local, ZooKeeper remote, String path, String remoteNodePath, Watcher localWatcher, Watcher remoteWatcher, boolean isSource, String localZkAddress, String serviceNodeName) {
         try {
             Stat stat = new Stat();
             byte[] data = local.getData(path, localWatcher, stat);
@@ -459,7 +517,16 @@ public class SyncReplicator {
                         }
                     }
                 } catch (KeeperException.NoNodeException e) {
-                    log.info(String.format("Remote node missing: %s. Skipped.", remoteNodePath));
+                    if (stat.getEphemeralOwner() > 0) {
+                        log.info(String.format("[%s] Target ephemeral node missing: %s. Recreating.", localZkAddress, remoteNodePath));
+                        try {
+                            copyNodeRecursive(local, remote, path, remoteNodePath, localWatcher, remoteWatcher, isSource, localZkAddress, serviceNodeName);
+                        } catch (Exception ex) {
+                            log.error("Error recreating missing ephemeral node", ex);
+                        }
+                    } else {
+                        log.info(String.format("Remote node missing: %s. Skipped.", remoteNodePath));
+                    }
                 } catch (Exception e) {
                     log.error("Error processing remote data change", e);
                 }
