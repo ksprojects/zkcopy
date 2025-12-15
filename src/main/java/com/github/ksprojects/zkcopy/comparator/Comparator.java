@@ -13,10 +13,6 @@ public class Comparator {
     private final Node sourceRoot;
     private final Node targetRoot;
     private final Set<String> ignoredPaths;
-    
-    public Comparator(Node sourceRoot, Node targetRoot) {
-        this(sourceRoot, targetRoot, new HashSet<>());
-    }
 
     public Comparator(Node sourceRoot, Node targetRoot, Set<String> ignoredPaths) {
         this.sourceRoot = sourceRoot;

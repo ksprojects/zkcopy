@@ -124,6 +124,9 @@ public class SyncReplicator {
         createLog.entrySet().removeIf(
             entry -> System.currentTimeMillis() - entry.getValue() > MAX_LOG_AGE_MILLISECONDS
         );
+        deleteLog.entrySet().removeIf(
+            entry -> System.currentTimeMillis() - entry.getValue() > MAX_LOG_AGE_MILLISECONDS
+        );
     }
 
     private void connect() throws IOException, InterruptedException {
@@ -158,14 +161,13 @@ public class SyncReplicator {
 
     private boolean runCompare() {
         log.info("Running comparison...");
-        boolean ignoreEphemeralForCompare = true;
-        Reader sourceReader = new Reader(sourceAddress, workers, sessionTimeout, ignoreEphemeralForCompare, ignoredPaths);
+        Reader sourceReader = new Reader(sourceAddress, workers, sessionTimeout, true, ignoredPaths);
         Node sourceRoot = sourceReader.read();
         
-        Reader targetReader = new Reader(targetAddress, workers, sessionTimeout, ignoreEphemeralForCompare, ignoredPaths);
+        Reader targetReader = new Reader(targetAddress, workers, sessionTimeout, true, ignoredPaths);
         Node targetRoot = targetReader.read();
         
-        Comparator comparator = new Comparator(sourceRoot, targetRoot);
+        Comparator comparator = new Comparator(sourceRoot, targetRoot, ignoredPaths);
         return comparator.compare();
     }
 
@@ -193,14 +195,9 @@ public class SyncReplicator {
         final Watcher localWatcher = isSource ? sourceWatcher : targetWatcher;
         final Watcher remoteWatcher = isSource ? targetWatcher : sourceWatcher;
         
-        String relativePath;
-        if (path.equals(localRoot)) {
-            relativePath = "";
-        } else if (path.startsWith(localRoot + "/")) {
-            relativePath = path.substring(localRoot.length());
-        } else {
-            return; 
-        }
+        String relativePath = makeRelativePath(path, localRoot);
+        if (relativePath == null) return;
+
         final String serviceNodeName = extractParentNodeName(relativePath);
         
         String remoteNodePathRaw = remoteRoot + relativePath;
@@ -309,7 +306,7 @@ public class SyncReplicator {
             Stat stat = zk.exists(path, false);
             if (stat != null && stat.getEphemeralOwner() > 0) {
                 if (stat.getEphemeralOwner() != zk.getSessionId()) {
-                    log.warn(String.format("[%s] Skipping deletion of ephemeral node %s. It is not owned by current session (Owner: %d, Current: %d). This is likely an original node protected from bidirectional sync deletion.", 
+                    log.warn(String.format("[%s] Skipping deletion of ephemeral node %s. It is not owned by current session (Owner: %d, Current: %d).",
                         localZkAddress, path, stat.getEphemeralOwner(), zk.getSessionId()));
                     return;
                 }
@@ -432,14 +429,9 @@ public class SyncReplicator {
     }
 
     private void syncEphemeralNode(ZooKeeper remote, String localNodePath, String localRoot, String remoteRoot, Stat localStat, byte[] localData, boolean isSource) {
-        String relativePath;
-        if (localNodePath.equals(localRoot)) {
-            relativePath = "";
-        } else if (localNodePath.startsWith(localRoot + "/")) {
-            relativePath = localNodePath.substring(localRoot.length());
-        } else {
-            return;
-        }
+        String relativePath = makeRelativePath(localNodePath, localRoot);
+        if (relativePath == null) return;
+
         final String serviceNodeName = extractParentNodeName(relativePath);
         String remoteNodePathRaw = remoteRoot + relativePath;
         if (remoteNodePathRaw.startsWith("//")) remoteNodePathRaw = remoteNodePathRaw.substring(1);
@@ -450,17 +442,14 @@ public class SyncReplicator {
             
             if (remoteStat == null) {
                 log.info(String.format("Syncing missing ephemeral node to remote: %s", remoteNodePath));
-                createLog.put(remoteNodePath, System.currentTimeMillis());
                 remote.create(remoteNodePath, localData, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
                 metricsManager.countCreation(isSource, serviceNodeName);
             } else {
                 byte[] remoteData = remote.getData(remoteNodePath, false, remoteStat);
-                if (!Arrays.equals(localData, remoteData)) {
-                    if (localStat.getMtime() > remoteStat.getMtime()) {
-                        log.info(String.format("Updating ephemeral node on remote (newer mtime): %s", remoteNodePath));
-                        remote.setData(remoteNodePath, localData, -1);
-                        metricsManager.countDataChanged(isSource, serviceNodeName);
-                    }
+                if (!Arrays.equals(localData, remoteData) && localStat.getMtime() > remoteStat.getMtime()) {
+                    log.info(String.format("Updating ephemeral node on remote (newer mtime): %s", remoteNodePath));
+                    remote.setData(remoteNodePath, localData, -1);
+                    metricsManager.countDataChanged(isSource, serviceNodeName);
                 }
             }
         } catch (Exception e) {
@@ -482,6 +471,16 @@ public class SyncReplicator {
             zk.getData(path, watcher, null);
             zk.getChildren(path, watcher);
         } catch (KeeperException.NoNodeException ignore) {
+        }
+    }
+
+    private String makeRelativePath(String localNodePath, String localRoot){
+        if (localNodePath.equals(localRoot)) {
+            return "";
+        } else if (localNodePath.startsWith(localRoot + "/")) {
+            return localNodePath.substring(localRoot.length());
+        } else {
+            return null;
         }
     }
 
@@ -512,7 +511,7 @@ public class SyncReplicator {
                             remote.setData(remoteNodePath, data, -1);
                             metricsManager.countDataChanged(isSource, serviceNodeName);
                         } else {
-                            log.debug(String.format("[%s] Ignoring echo/stale update for %s. Local mtime (%d) <= Remote mtime (%d)", 
+                            log.debug(String.format("[%s] Ignoring update for %s. Local mtime (%d) <= Remote mtime (%d)",
                                     localZkAddress, remoteNodePath, stat.getMtime(), remoteStat.getMtime()));
                         }
                     }

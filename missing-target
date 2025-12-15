@@ -1,0 +1,4 @@
+delete /ichwill-zen/prestable/bazinga_pubhouse_worker/overrides/pubhouseCounterRedisMemoryUsageWatcher
+delete /ichwill-zen/prestable/hermes/clients/1.vm-ai.anshishov3.pc.idzn.ru/recommender-ucp-base-sandbox
+delete /ichwill-zen/prestable/hermes/clients/1.vm-ai.konstantin-matveev.kc.idzn.ru
+delete /ichwill-zen/prestable/hermes/clients/1.vm-ucpcs.alexander-badalov-vm.kc.idzn.ru

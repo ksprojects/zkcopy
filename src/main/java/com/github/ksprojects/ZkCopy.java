@@ -4,7 +4,7 @@ import com.github.ksprojects.zkcopy.LoggingWatcher;
 import com.github.ksprojects.zkcopy.Node;
 import com.github.ksprojects.zkcopy.metric.MetricsPusher;
 import com.github.ksprojects.zkcopy.metric.SyncReplicatorMetricsManager;
-import com.github.ksprojects.zkcopy.metric.VictoriaMetricsClient;
+import com.github.ksprojects.zkcopy.metric.VictoriaMetricsHttpClient;
 import com.github.ksprojects.zkcopy.reader.Reader;
 import com.github.ksprojects.zkcopy.comparator.Comparator;
 import com.github.ksprojects.zkcopy.replicator.SyncReplicator;
@@ -109,7 +109,7 @@ public class ZkCopy implements Callable<Void> {
 
     @Override
     public Void call() throws Exception {
-        VictoriaMetricsClient vmClient = new VictoriaMetricsClient(metricsUrl, 5000);
+        VictoriaMetricsHttpClient vmClient = new VictoriaMetricsHttpClient(metricsUrl, 5000);
         PrometheusMeterRegistry registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
         Set<String> ignoredPaths = new HashSet<>(ignoreNodes != null ? ignoreNodes : new ArrayList<>());
 

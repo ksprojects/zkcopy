@@ -8,14 +8,14 @@ import java.util.concurrent.TimeUnit;
 
 public class MetricsPusher {
     private static final Logger log = Logger.getLogger(MetricsPusher.class);
-    private final VictoriaMetricsClient vmClient;
+    private final VictoriaMetricsHttpClient vmClient;
 
     private final PrometheusMeterRegistry registry;
 
     private final int pushingRate;
 
-    public MetricsPusher(VictoriaMetricsClient victoriaMetricsClient, PrometheusMeterRegistry registry, int pushingRate) {
-        this.vmClient = victoriaMetricsClient;
+    public MetricsPusher(VictoriaMetricsHttpClient victoriaMetricsHttpClient, PrometheusMeterRegistry registry, int pushingRate) {
+        this.vmClient = victoriaMetricsHttpClient;
         this.registry = registry;
         this.pushingRate = pushingRate;
     }

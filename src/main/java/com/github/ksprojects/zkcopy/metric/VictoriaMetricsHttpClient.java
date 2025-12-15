@@ -10,14 +10,14 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 
-public class VictoriaMetricsClient {
-    private static final Logger logger = Logger.getLogger(VictoriaMetricsClient.class);
+public class VictoriaMetricsHttpClient {
+    private static final Logger logger = Logger.getLogger(VictoriaMetricsHttpClient.class);
 
     private final String url;
     private final int requestTimeoutMs;
     private final HttpClient httpClient;
 
-    public VictoriaMetricsClient(String url, int requestTimeoutMs) {
+    public VictoriaMetricsHttpClient(String url, int requestTimeoutMs) {
         this.url = url;
         this.requestTimeoutMs = requestTimeoutMs;
         this.httpClient = HttpClient.newBuilder()
