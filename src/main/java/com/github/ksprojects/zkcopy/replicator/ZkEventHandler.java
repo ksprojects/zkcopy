@@ -1,6 +1,9 @@
 package com.github.ksprojects.zkcopy.replicator;
 
 import com.github.ksprojects.zkcopy.metric.SyncReplicatorMetricsManager;
+import com.github.ksprojects.zkcopy.replicator.cache.CacheKey;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.recipes.cache.CuratorCacheListener;
 import org.apache.log4j.Logger;
@@ -11,9 +14,15 @@ import org.apache.zookeeper.data.Stat;
 
 import java.util.Arrays;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
+import static org.apache.curator.framework.recipes.cache.CuratorCacheListener.Type.NODE_CHANGED;
+import static org.apache.curator.framework.recipes.cache.CuratorCacheListener.Type.NODE_CREATED;
+import static org.apache.curator.framework.recipes.cache.CuratorCacheListener.Type.NODE_DELETED;
 
 public class ZkEventHandler {
     private static final Logger log = Logger.getLogger(ZkEventHandler.class);
+    private static final Object NOTHING = new Object();
 
     private final CuratorFramework source;
     private final CuratorFramework target;
@@ -22,6 +31,9 @@ public class ZkEventHandler {
     private final Set<String> ignoredPaths;
     private final boolean ignoreEphemeralNodes;
     private final SyncReplicatorMetricsManager metricsManager;
+    private final Cache<CacheKey, Object> operationsCache = CacheBuilder.newBuilder()
+        .expireAfterWrite(1, TimeUnit.SECONDS)
+        .build();
 
     public ZkEventHandler(CuratorFramework source, CuratorFramework target, String sourcePath, String targetPath, Set<String> ignoredPaths, boolean ignoreEphemeralNodes, SyncReplicatorMetricsManager metricsManager) {
         this.source = source;
@@ -53,6 +65,13 @@ public class ZkEventHandler {
 
         String relativePath = makeRelativePath(path, event.isSource());
         if (relativePath == null) return;
+
+        var cacheKey = CacheKey.of(relativePath, event.getNewData(), NODE_CREATED);
+        if (operationsCache.getIfPresent(cacheKey) != null){
+            operationsCache.invalidate(cacheKey);
+            return;
+        }
+
         var remoteNodePath = makeRemotePath(relativePath, event.isSource());
 
         var remoteClient = event.isSource() ? target : source;
@@ -71,6 +90,7 @@ public class ZkEventHandler {
                     .withMode(createMode)
                     .withACL(ZooDefs.Ids.OPEN_ACL_UNSAFE)
                     .forPath(remoteNodePath, event.getNewData());
+                operationsCache.put(cacheKey, NOTHING);
                 metricsManager.countCreation(event.isSource(), extractParentNodeName(relativePath));
             } catch (org.apache.zookeeper.KeeperException.NodeExistsException e) {
                 log.info(String.format("Node %s already exist! Skipped.", remoteNodePath));
@@ -86,6 +106,13 @@ public class ZkEventHandler {
 
         String relativePath = makeRelativePath(path, event.isSource());
         if (relativePath == null) return;
+
+        var cacheKey = CacheKey.of(relativePath, event.getNewData(), NODE_CHANGED);
+        if (operationsCache.getIfPresent(cacheKey) != null){
+            operationsCache.invalidate(cacheKey);
+            return;
+        }
+
         var remoteNodePath = makeRemotePath(relativePath, event.isSource());
 
         var remoteClient = event.isSource() ? target : source;
@@ -99,21 +126,15 @@ public class ZkEventHandler {
                 Stat remoteStat = new Stat();
                 byte[] remoteData = remoteClient.getData().storingStatIn(remoteStat).forPath(remoteNodePath);
 
-                if (Arrays.equals(remoteData, event.getNewData())) {
-                    log.info(String.format("Node %s already has same data. Skipped.", remoteNodePath));
+                if (Arrays.equals(remoteData, event.getNewData()) || remoteStat.getMtime() > event.getNewStat().getMtime()) {
                     return;
                 }
 
-                if (remoteStat.getMtime() > event.getNewStat().getMtime()) {
-                    log.info(String.format("Node %s is newer (mtime %d > %d). Skipped.", remoteNodePath, remoteStat.getMtime(), event.getNewStat().getMtime()));
-                    return;
-                }
-            } catch (KeeperException.NoNodeException ignore) {}
-
-            log.info(String.format("[%s] Replicating data change of: %s. Old value: %s. New value: %s.", event.getType(), remoteNodePath, bytesToString(event.getOldData()), bytesToString(event.getNewData())));
-            try {
+                log.info(String.format("[%s] Replicating data change of: %s. Old value: %s. New value: %s.", event.getType(), remoteNodePath, bytesToString(event.getOldData()), bytesToString(event.getNewData())));
                 remoteClient.setData()
+                    .withVersion(remoteStat.getVersion())
                     .forPath(remoteNodePath, event.getNewData());
+                operationsCache.put(cacheKey, NOTHING);
                 metricsManager.countDataChanged(event.isSource(), extractParentNodeName(relativePath));
             } catch (KeeperException.NoNodeException e) {
                 log.info(String.format("Node %s does not exist! Skipped.", remoteNodePath));
@@ -129,6 +150,13 @@ public class ZkEventHandler {
 
         String relativePath = makeRelativePath(path, event.isSource());
         if (relativePath == null) return;
+
+        var cacheKey = CacheKey.of(relativePath, event.getNewData(), NODE_DELETED);
+        if (operationsCache.getIfPresent(cacheKey) != null){
+            operationsCache.invalidate(cacheKey);
+            return;
+        }
+
         var remoteNodePath = makeRemotePath(relativePath, event.isSource());
 
         var remoteClient = event.isSource() ? target : source;
@@ -140,8 +168,10 @@ public class ZkEventHandler {
 
             log.info(String.format("[%s] Replicating deletion of: %s. Old value: %s.", event.getType(), remoteNodePath, bytesToString(event.getOldData())));
             try {
+                // TODO Нельзя удалять эфемерный узел, который тебе не принадлежит
                 remoteClient.delete()
                     .forPath(remoteNodePath);
+                operationsCache.put(cacheKey, NOTHING);
                 metricsManager.countDeletion(event.isSource(), extractParentNodeName(relativePath));
             } catch (KeeperException.NoNodeException ignore) {}
         } catch (Exception e) {

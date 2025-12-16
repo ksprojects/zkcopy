@@ -6,15 +6,14 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
-import java.util.HashSet;
 
-public class Comparator {
-    private static final Logger LOGGER = Logger.getLogger(Comparator.class);
+public class ZkComparator {
+    private static final Logger LOGGER = Logger.getLogger(ZkComparator.class);
     private final Node sourceRoot;
     private final Node targetRoot;
     private final Set<String> ignoredPaths;
 
-    public Comparator(Node sourceRoot, Node targetRoot, Set<String> ignoredPaths) {
+    public ZkComparator(Node sourceRoot, Node targetRoot, Set<String> ignoredPaths) {
         this.sourceRoot = sourceRoot;
         this.targetRoot = targetRoot;
         this.ignoredPaths = ignoredPaths;

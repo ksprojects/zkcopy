@@ -9,6 +9,8 @@ import org.apache.zookeeper.data.Stat;
 
 import java.io.Closeable;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ZkEventListener implements Closeable {
     private static final Logger log = Logger.getLogger(ZkEventListener.class);
@@ -23,6 +25,8 @@ public class ZkEventListener implements Closeable {
     private final CuratorFramework targetClient;
     private CuratorCache sourceTree;
     private CuratorCache targetTree;
+    private final AtomicBoolean isInitialized = new AtomicBoolean(false);
+    private final CountDownLatch initializedCountDownLatch = new CountDownLatch(2);
 
     public ZkEventListener(
         String sourcePath, String targetPath, CuratorFramework sourceClient, CuratorFramework targetClient,
@@ -37,7 +41,7 @@ public class ZkEventListener implements Closeable {
         this.targetClient = targetClient;
     }
 
-    public void start() {
+    public void start() throws InterruptedException {
         initCacheTries();
 
         log.info("Starting CuratorCache on source: " + sourcePath);
@@ -45,6 +49,8 @@ public class ZkEventListener implements Closeable {
         log.info("Starting CuratorCache on target: " + targetPath);
         targetTree.start();
 
+        initializedCountDownLatch.await();
+        isInitialized.set(true);
         log.info("Listeners started. Replication active.");
     }
 
@@ -56,16 +62,18 @@ public class ZkEventListener implements Closeable {
 
     private void consume(CuratorCacheListener.Type type, ChildData oldData, ChildData newData, boolean isSource){
         try {
-            Stat oldStat = oldData.getStat();
-            Stat newStat = newData.getStat();
+            Stat oldStat = oldData != null ? oldData.getStat() : null;
+            Stat newStat = newData != null ? newData.getStat() : null;
+            byte[] oldDataBytes = oldData != null ? oldData.getData() : null;
+            byte[] newDataBytes = newData != null ? newData.getData() : null;
             String path = getEventPath(type, oldData, newData);
 
             if (ignoreEphemeralNodes && isEphemeral(type, oldData, newData)) return;
             if (shouldIgnore(path)) return;
 
-            ZkEvent event = new ZkEvent(oldStat, newStat, path, oldData.getData(), newData.getData(), isSource, type);
+            ZkEvent event = new ZkEvent(oldStat, newStat, path, oldDataBytes, newDataBytes, isSource, type);
 
-            log.info(String.format("Prepared new %s event for path %s", type, path));
+            log.debug(String.format("Prepared new %s event for path %s", type, path));
             zkEventTemplate.send(event);
         } catch (Exception e) {
             log.error("Error processing event with type: " + type, e);
@@ -94,8 +102,22 @@ public class ZkEventListener implements Closeable {
         sourceTree = CuratorCache.build(sourceClient, sourcePath);
         targetTree = CuratorCache.build(targetClient, targetPath);
 
-        sourceTree.listenable().addListener((type, oldData, newData) -> consume(type, oldData, newData, true));
-        targetTree.listenable().addListener((type, oldData, newData) -> consume(type, oldData, newData, false));
+        sourceTree.listenable().addListener(getListener(true));
+        targetTree.listenable().addListener(getListener(false));
+    }
+
+    private CuratorCacheListener getListener(boolean isSource){
+        return CuratorCacheListener.builder()
+            .forAll((type, oldData, newData) -> {
+                if (isInitialized.get()) {
+                    consume(type, oldData, newData, isSource);
+                }
+            })
+            .forInitialized(() -> {
+                log.info(String.format("%s CuratorCache has been initialized.", isSource ? "Source" : "Target"));
+                initializedCountDownLatch.countDown();
+            })
+            .build();
     }
 
     private void closeQuietly(Closeable resource) {

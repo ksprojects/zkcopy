@@ -1,9 +1,7 @@
 package com.github.ksprojects.zkcopy.replicator;
 
-import com.github.ksprojects.zkcopy.Node;
-import com.github.ksprojects.zkcopy.comparator.Comparator;
 import com.github.ksprojects.zkcopy.metric.SyncReplicatorMetricsManager;
-import com.github.ksprojects.zkcopy.reader.Reader;
+import com.github.ksprojects.zkcopy.presync.ZkClustersPresyncer;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.framework.state.ConnectionState;
@@ -21,7 +19,6 @@ public class ZkSyncerInitializer {
 
     private final String sourceAddress;
     private final String targetAddress;
-    private final int workers;
     private final Set<String> ignoredPaths;
     private CuratorFramework sourceClient;
     private CuratorFramework targetClient;
@@ -38,10 +35,9 @@ public class ZkSyncerInitializer {
     private final AtomicBoolean isRunning = new AtomicBoolean(true);
     private final AtomicBoolean paused = new AtomicBoolean(false);
 
-    public ZkSyncerInitializer(String sourceAddress, String targetAddress, int workers, Set<String> ignoredPaths, int sessionTimeout, SyncReplicatorMetricsManager metricsManager, boolean ignoreEphemeralNodes) {
+    public ZkSyncerInitializer(String sourceAddress, String targetAddress, Set<String> ignoredPaths, int sessionTimeout, SyncReplicatorMetricsManager metricsManager, boolean ignoreEphemeralNodes) {
         this.sourceAddress = sourceAddress;
         this.targetAddress = targetAddress;
-        this.workers = workers;
         this.ignoredPaths = ignoredPaths;
         this.sessionTimeout = sessionTimeout;
         this.metricsManager = metricsManager;
@@ -53,7 +49,9 @@ public class ZkSyncerInitializer {
         try {
             connect();
 
-            if (!runCompare()) {
+            initConnectionStateListeners();
+
+            if (!presyncClusters()) {
                 log.error("Initial comparison failed. Aborting sync mode.");
                 System.exit(1);
             }
@@ -66,9 +64,6 @@ public class ZkSyncerInitializer {
         } catch (Exception e) {
             log.error("Critical error while syncer initialization!", e);
             System.exit(1);
-        } finally {
-            closeQuietly(sourceClient);
-            closeQuietly(targetClient);
         }
     }
 
@@ -82,9 +77,9 @@ public class ZkSyncerInitializer {
             log.error("Critical syncer error!", e);
             System.exit(1);
         } finally {
+            zkEventListener.close();
             closeQuietly(sourceClient);
             closeQuietly(targetClient);
-            zkEventListener.close();
         }
     }
 
@@ -130,16 +125,14 @@ public class ZkSyncerInitializer {
         metricsManager.initUsedMemoryGauge();
     }
 
-    private boolean runCompare() {
-        log.info("Running comparison...");
-        Reader sourceReader = new Reader(sourceAddress, workers, sessionTimeout, true, ignoredPaths);
-        Node sourceRoot = sourceReader.read();
+    private boolean presyncClusters() {
+        log.info("Running presyncer...");
 
-        Reader targetReader = new Reader(targetAddress, workers, sessionTimeout, true, ignoredPaths);
-        Node targetRoot = targetReader.read();
+        var presyncer = new ZkClustersPresyncer(sourceClient, targetClient);
+        var res = presyncer.presync(getPath(sourceAddress), getPath(targetAddress));
 
-        Comparator comparator = new Comparator(sourceRoot, targetRoot, ignoredPaths);
-        return comparator.compare();
+        log.info("Presynchronization has been finished!");
+        return res;
     }
 
     private void lockMainThread() throws InterruptedException {
@@ -164,8 +157,6 @@ public class ZkSyncerInitializer {
             sessionTimeout,
             sessionTimeout,
             new ExponentialBackoffRetry(1000, 3));
-
-        initConnectionStateListeners();
 
         sourceClient.start();
         targetClient.start();

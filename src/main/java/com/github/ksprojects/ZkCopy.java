@@ -6,19 +6,22 @@ import com.github.ksprojects.zkcopy.metric.MetricsPusher;
 import com.github.ksprojects.zkcopy.metric.SyncReplicatorMetricsManager;
 import com.github.ksprojects.zkcopy.metric.VictoriaMetricsHttpClient;
 import com.github.ksprojects.zkcopy.reader.Reader;
-import com.github.ksprojects.zkcopy.comparator.Comparator;
-import com.github.ksprojects.zkcopy.replicator.ZkEventHandler;
-import com.github.ksprojects.zkcopy.replicator.ZkEventListener;
+import com.github.ksprojects.zkcopy.comparator.ZkComparator;
 import com.github.ksprojects.zkcopy.replicator.ZkSyncerInitializer;
 import com.github.ksprojects.zkcopy.writer.Writer;
+
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import io.micrometer.prometheus.PrometheusConfig;
 import io.micrometer.prometheus.PrometheusMeterRegistry;
 import org.apache.log4j.Logger;
+import org.apache.log4j.PropertyConfigurator;
 import org.apache.zookeeper.ZooKeeper;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -124,7 +127,7 @@ public class ZkCopy implements Callable<Void> {
         if (syncMode) {
             LOGGER.info("Starting Sync Mode...");
             var metricsManager = new SyncReplicatorMetricsManager(registry, ctype, cloud);
-            var syncerInitializer = new ZkSyncerInitializer(source, target, workers, ignoredPaths, sessionTimeout, metricsManager, ignoreEphemeralNodes);
+            var syncerInitializer = new ZkSyncerInitializer(source, target, ignoredPaths, sessionTimeout, metricsManager, ignoreEphemeralNodes);
             syncerInitializer.initialize();
             syncerInitializer.start();
             return null;
@@ -137,8 +140,8 @@ public class ZkCopy implements Callable<Void> {
             Reader targetReader = new Reader(target, workers, sessionTimeout, ignoreEphemeralNodes, ignoredPaths);
             Node targetRoot = targetReader.read();
             
-            Comparator comparator = new Comparator(sourceRoot, targetRoot, ignoredPaths);
-            if (!comparator.compare()) {
+            ZkComparator zkComparator = new ZkComparator(sourceRoot, targetRoot, ignoredPaths);
+            if (!zkComparator.compare()) {
                 System.exit(1);
             }
             return null;

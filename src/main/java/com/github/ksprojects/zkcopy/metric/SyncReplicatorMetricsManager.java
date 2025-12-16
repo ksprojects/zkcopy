@@ -12,7 +12,7 @@ public class SyncReplicatorMetricsManager {
     private static final long INITIALIZED_AT = System.currentTimeMillis();
     public static final String ZK_REPLICATION_METRIC = "ucp_zk_replication_requests";
     public static final String ZK_EVENTS_BROKER_RECEIVED_EVENTS_METRIC = "ucp_zk_replication_received_events";
-    public static final String ZK_EVENTS_BROKER_HANDLED_EVENTS_METRIC = "ucp_zk_replication_received_events";
+    public static final String ZK_EVENTS_BROKER_HANDLED_EVENTS_METRIC = "ucp_zk_replication_handled_events";
     public static final String ZK_CONNECTED_GAUGE_METRIC = "ucp_zk_replication_connected_time";
     public static final String ZK_UP_TIME_GAUGE_METRIC = "ucp_zk_replication_up_time";
     public static final String ZK_FREE_MEM_GAUGE_METRIC = "ucp_zk_replication_memory_free";
