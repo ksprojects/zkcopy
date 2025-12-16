@@ -24,7 +24,11 @@ public class ZkEventExecutor implements Runnable {
     }
 
     public void start(){
+        log.info("Starting zookeeper events executor service...");
+
         executor.submit(this);
+
+        log.info("Zookeeper events executor service started.");
     }
 
     @Override
@@ -37,7 +41,7 @@ public class ZkEventExecutor implements Runnable {
 
                 eventHandler.handle(event);
             } catch (Exception e){
-                log.error("Error while handling zk event.", e);
+                log.error("Critical error while handling zk event.", e);
             }
         }
     }

@@ -9,6 +9,7 @@ import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.data.Stat;
 
+import java.util.Arrays;
 import java.util.Set;
 
 public class ZkEventHandler {
@@ -94,6 +95,21 @@ public class ZkEventHandler {
                 return;
             }
 
+            try {
+                Stat remoteStat = new Stat();
+                byte[] remoteData = remoteClient.getData().storingStatIn(remoteStat).forPath(remoteNodePath);
+
+                if (Arrays.equals(remoteData, event.getNewData())) {
+                    log.info(String.format("Node %s already has same data. Skipped.", remoteNodePath));
+                    return;
+                }
+
+                if (remoteStat.getMtime() > event.getNewStat().getMtime()) {
+                    log.info(String.format("Node %s is newer (mtime %d > %d). Skipped.", remoteNodePath, remoteStat.getMtime(), event.getNewStat().getMtime()));
+                    return;
+                }
+            } catch (KeeperException.NoNodeException ignore) {}
+
             log.info(String.format("[%s] Replicating data change of: %s. Old value: %s. New value: %s.", event.getType(), remoteNodePath, bytesToString(event.getOldData()), bytesToString(event.getNewData())));
             try {
                 remoteClient.setData()
@@ -134,7 +150,7 @@ public class ZkEventHandler {
     }
 
     private boolean shouldIgnore(String path) {
-        return ignoredPaths.contains(path);
+        return ignoredPaths.stream().anyMatch(path::contains);
     }
 
     private String makeRelativePath(String localNodePath, boolean isSource){
@@ -167,6 +183,7 @@ public class ZkEventHandler {
     }
 
     private String bytesToString(byte[] bytes) {
+        if (bytes == null) return "<null>";
         return new String(bytes);
     }
 
