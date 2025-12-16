@@ -7,7 +7,7 @@ import com.github.ksprojects.zkcopy.metric.SyncReplicatorMetricsManager;
 import com.github.ksprojects.zkcopy.metric.VictoriaMetricsHttpClient;
 import com.github.ksprojects.zkcopy.reader.Reader;
 import com.github.ksprojects.zkcopy.comparator.Comparator;
-import com.github.ksprojects.zkcopy.replicator.SyncReplicator;
+import com.github.ksprojects.zkcopy.replicator.ZkEventListener;
 import com.github.ksprojects.zkcopy.writer.Writer;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -122,7 +122,7 @@ public class ZkCopy implements Callable<Void> {
         if (syncMode) {
             LOGGER.info("Starting Sync Mode...");
             var metricsManager = new SyncReplicatorMetricsManager(registry, ctype, cloud);
-            SyncReplicator replicator = new SyncReplicator(source, target, sessionTimeout, workers, ignoreEphemeralNodes, ignoredPaths, metricsManager);
+            ZkEventListener replicator = new ZkEventListener(source, target, sessionTimeout, workers, ignoreEphemeralNodes, ignoredPaths, metricsManager);
             replicator.start();
             return null;
         }
