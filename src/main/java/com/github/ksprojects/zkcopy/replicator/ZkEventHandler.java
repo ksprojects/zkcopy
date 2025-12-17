@@ -75,15 +75,14 @@ public class ZkEventHandler {
         var remoteNodePath = makeRemotePath(relativePath, event.isSource());
 
         var remoteClient = event.isSource() ? target : source;
+        var localClient = event.isSource() ? source : target;
 
         try {
             var createMode = getCreateMode(event);
 
-            if (ignoreEphemeralNodes && isEphemeral(event.getNewStat())) {
-                return;
-            }
+            if (ignoreEphemeralNodes && isEphemeral(event.getNewStat())) return;
 
-            log.info(String.format("[%s] Replicating creation: %s. Value: %s.", event.getType(), remoteNodePath, bytesToString(event.getNewData())));
+            log.info(String.format("[Origin: %s] Replicating creation: %s. Value: %s.", localClient.getZookeeperClient().getCurrentConnectionString(), remoteNodePath, bytesToString(event.getNewData())));
             try {
                 remoteClient.create()
                     .creatingParentsIfNeeded()
@@ -116,11 +115,10 @@ public class ZkEventHandler {
         var remoteNodePath = makeRemotePath(relativePath, event.isSource());
 
         var remoteClient = event.isSource() ? target : source;
+        var localClient = event.isSource() ? source : target;
 
         try {
-            if (ignoreEphemeralNodes && isEphemeral(event.getNewStat())) {
-                return;
-            }
+            if (ignoreEphemeralNodes && isEphemeral(event.getNewStat())) return;
 
             try {
                 Stat remoteStat = new Stat();
@@ -130,7 +128,7 @@ public class ZkEventHandler {
                     return;
                 }
 
-                log.info(String.format("[%s] Replicating data change of: %s. Old value: %s. New value: %s.", event.getType(), remoteNodePath, bytesToString(event.getOldData()), bytesToString(event.getNewData())));
+                log.info(String.format("[Origin: %s] Replicating data change of: %s. Old value: %s. New value: %s.", localClient.getZookeeperClient().getCurrentConnectionString(), remoteNodePath, bytesToString(event.getOldData()), bytesToString(event.getNewData())));
                 remoteClient.setData()
                     .withVersion(remoteStat.getVersion())
                     .forPath(remoteNodePath, event.getNewData());
@@ -160,15 +158,19 @@ public class ZkEventHandler {
         var remoteNodePath = makeRemotePath(relativePath, event.isSource());
 
         var remoteClient = event.isSource() ? target : source;
+        var localClient = event.isSource() ? source : target;
 
         try {
-            if (ignoreEphemeralNodes && isEphemeral(event.getOldStat())) {
-                return;
-            }
+            if (ignoreEphemeralNodes && isEphemeral(event.getOldStat())) return;
 
-            log.info(String.format("[%s] Replicating deletion of: %s. Old value: %s.", event.getType(), remoteNodePath, bytesToString(event.getOldData())));
+            log.info(String.format("[Origin: %s] Replicating deletion of: %s. Old value: %s.", localClient.getZookeeperClient().getCurrentConnectionString(), remoteNodePath, bytesToString(event.getOldData())));
             try {
-                // TODO Нельзя удалять эфемерный узел, который тебе не принадлежит
+                var remoteStat = remoteClient.checkExists().forPath(remoteNodePath);
+                var remoteSessionId = remoteClient.getZookeeperClient().getZooKeeper().getSessionId();
+                if (isDifferentEphemeralOwner(remoteStat, remoteSessionId)){
+                    log.info(String.format("Ephemeral node %s owner: %s does not equal to current session id: %s. Skipped.", remoteNodePath, remoteStat.getEphemeralOwner(), remoteSessionId));
+                    return;
+                }
                 remoteClient.delete()
                     .forPath(remoteNodePath);
                 operationsCache.put(cacheKey, NOTHING);
@@ -177,6 +179,10 @@ public class ZkEventHandler {
         } catch (Exception e) {
             log.error("Failed to replicate data deletion for " + path, e);
         }
+    }
+
+    private boolean isDifferentEphemeralOwner(Stat nodeStat, long sessionId){
+        return nodeStat != null && nodeStat.getEphemeralOwner() > 0 && nodeStat.getEphemeralOwner() != sessionId;
     }
 
     private boolean shouldIgnore(String path) {

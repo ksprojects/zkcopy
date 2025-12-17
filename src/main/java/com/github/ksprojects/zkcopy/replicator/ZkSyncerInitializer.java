@@ -104,9 +104,7 @@ public class ZkSyncerInitializer {
     private void initEventExecutor(){
         log.info("Initializing zkEventExecutor...");
 
-        zkEventExecutor = new ZkEventExecutor(
-            localEventBroker, zkEventHandler, isRunning, paused
-        );
+        zkEventExecutor = new ZkEventExecutor(localEventBroker, zkEventHandler, isRunning, paused);
     }
 
     private void initConnectionGauge(){
@@ -174,13 +172,23 @@ public class ZkSyncerInitializer {
 
     private ConnectionStateListener getConnectionStateListener(){
         return (client, newState) -> {
-            if (newState == ConnectionState.CONNECTED || newState == ConnectionState.RECONNECTED) {
-                paused.set(false);
-                connectedAt.set(System.currentTimeMillis());
-                log.info("Curator connection established/restored to " + client.getZookeeperClient().getCurrentConnectionString());
-            } else if (newState == ConnectionState.LOST || newState == ConnectionState.SUSPENDED) {
-                paused.set(true);
-                log.warn("Curator connection lost/suspended to " + client.getZookeeperClient().getCurrentConnectionString());
+            switch (newState) {
+                case CONNECTED:
+                case RECONNECTED:
+                    paused.set(false);
+                    connectedAt.set(System.currentTimeMillis());
+                    log.info("Curator connection established/restored to " + client.getZookeeperClient().getCurrentConnectionString());
+                    break;
+                case SUSPENDED:
+                    paused.set(true);
+                    log.warn("Curator connection suspended to " + client.getZookeeperClient().getCurrentConnectionString());
+                    log.warn("Replication stopped.");
+                    break;
+                case LOST:
+                    log.error("Connection finally lost! Session died with ephemerals. Exiting...");
+                    System.exit(1);
+                default:
+                    break;
             }
         };
     }
